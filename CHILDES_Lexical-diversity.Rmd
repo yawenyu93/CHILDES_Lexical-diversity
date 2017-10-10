@@ -1,0 +1,570 @@
+---
+title: "CHILDES_Lexical-diversity"
+author: "Yawen Yu"
+date: "September 28, 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r,eval=FALSE,message=FALSE,echo=FALSE}
+#install packages
+install.packages("devtools", repos = "https://github.com/hadley/devtools")
+devtools::install_github("langcog/childesr", repos = "https://github.com/langcog/childesr")
+install.packages("koRpus", repos = "https://reaktanz.de/?c=hacking&s=koRpus")
+install.packages("quanteda", repos = "http://quanteda.io")
+library(childesr)
+library(data.table)
+library(koRpus)
+library(quanteda)
+library(tidyverse)
+library(tm)
+
+#set language enviroment as english
+set.kRp.env(lang = "kRp.env", validate = TRUE)
+get.kRp.env(lang = TRUE, errorIfUnset = TRUE)
+```
+
+
+# Get and Clean Data
+
+```{r,eval=FALSE, message=FALSE}
+# get partipants information
+participants = get_participants(
+collection = NULL,
+corpus = NULL,
+child = NULL,
+role = "Target_child"
+)
+
+
+# get utterances of all children
+child_data = get_utterances(
+collection = NULL,
+corpus = NULL,
+child = NULL,
+role = "Target_child"
+)
+
+
+# convert age from day to month
+day_to_month = 30.5
+child_data$speaker_age = child_data$speaker_age / day_to_month
+
+
+# remove unintelligible utterances
+murmur = c("xxx", "yyy", "yyy_yyy")
+gloss = as.character(child_data$gloss)
+gloss = removeWords(gloss, murmur)
+gloss = gsub("xxx", "", gloss)
+gloss = gsub("yyy", "", gloss)
+child_data$gloss = gloss
+
+
+# remove missing data
+child_data$gloss[grepl("^\\s*$", child_data$gloss)] = NA
+child_data = child_data[-which(is.na(child_data$gloss)),]
+
+
+```
+
+
+
+# Participants characteristic: children's age
+
+```{r, message=FALSE}
+# replace NA in age columns
+## if "speaker_age" is blank, fill "speaker_age" column with value in "target_child_age"
+## if no age is specified, assign "-1" to "speaker_age" column
+
+child_data$speaker_age = ifelse(
+is.na(child_data$speaker_age),
+child_data$target_child_age,
+child_data$speaker_age
+)
+
+child_data$speaker_age = ifelse(is.na(child_data$speaker_age), -1, child_data$speaker_age)
+
+
+# most kids are at age of 20~70 month
+child_age = child_data$speaker_age
+ggplot(child_data, aes(x = child_age)) +
+geom_density()
+
+```
+
+
+
+# Subset each kid's utterances over time
+
+```{r, eval = FALSE, message=FALSE}
+
+# make a id list
+
+child_id = unique(child_data$speaker_id)
+child_id_char = as.character(child_id)
+number_of_child = length(child_id)
+
+
+# pick time intervals
+
+min_age = min(child_data$speaker_age, na.rm = TRUE)
+max_age = max(child_data$speaker_age, na.rm = TRUE)
+time_intervals = c(seq(min_age, max_age, 6), round(max_age))
+time_range = length(time_intervals) - 1
+
+
+# make lists based on id
+
+child_raw_list = list()
+
+for (i in 1:number_of_child) {
+child_raw_list[[child_id_char[i]]] = child_data[which(child_data$speaker_id == child_id[i]),]
+}
+
+
+
+# add second dimmension to lists according to time intervals (6 months)
+
+child_utter = list()
+
+for (i in 1:number_of_child) {
+for (j in 1:time_range) {
+child_utter[[child_id_char[i]]][[j]] = child_raw_list[[child_id_char[i]]]$gloss
+[child_raw_list[[child_id_char[i]]]$speaker_age < time_intervals[j +1] &
+child_raw_list[[child_id_char[i]]]$speaker_age > time_intervals[j]]
+}
+}
+
+
+
+# convert chracter(0) to NA in child_utter list
+
+for (i in 1:number_of_child) {
+child_utter[[i]] = lapply(child_utter[[i]], function(x)
+if (identical(x, character(0)))
+NA_character_
+else
+x)
+}
+
+```
+
+
+
+# Measure lexical diversity with Vocd-D(HDD), MTLD, MATTR, MAAS  
+
+```{r,message=FALSE,eval=FALSE}
+
+# Vocd-D/HDD
+
+vocd_list = list()
+
+for (i in 1:number_of_child) {
+for (j in 1:time_range) {
+if (any(is.na(child_utter[[i]][[j]]) == FALSE)) {
+vocd_list[[child_id_char[i]]][[j]] = HDD((
+koRpus::tokenize(
+child_utter[[i]][[j]],
+format = "obj",
+tag = TRUE,
+lang = "en"
+)
+),
+rand.sample = 42)@HDD$HDD
+}
+else {
+vocd_list[[child_id_char[i]]][[j]] = NA_character_
+  }
+ }
+}
+
+
+
+# MTLD
+## measure sequetially and its results are not correlated with text length; 
+## it performs especially well when text length > 100.
+
+mtld_list = list()
+
+for (i in 1:number_of_child) {
+for (j in 1:time_range) {
+if (any(is.na(child_utter[[i]][[j]]) == FALSE)) {
+mtld_list[[child_id_char[i]]][[j]] = MTLD(
+  koRpus::tokenize(child_utter[[i]][[j]],
+format = "obj",tag = TRUE,lang = "en"),
+factor.size = 0.72,min.tokens = 9)@MTLD$MTLD
+}
+else {
+mtld_list[[child_id_char[i]]][[j]] = NA_character_
+}
+}
+}
+
+
+
+# MATTR 
+## take 100 tokens as window 
+
+mattr_list = list()
+
+for(i in 1:number_of_child){
+  for (j in 1:time_range){
+    if (any(is.na(child_utter[[i]][[j]]) == FALSE )){
+mattr_list[[child_id_char[i]]][[j]] = MATTR(
+koRpus::tokenize(child_utter[[i]][[j]], 
+format = "obj", tag = TRUE,lang = "en"), window = 100)@MATTR$MATTR
+}
+else {
+ mattr_list[[child_id_char[i]]][[j]] = NA_character_
+}
+}
+}
+
+
+
+# MAAS 
+# It assumes the TTR curve can be fitted relatively well by a logarithmic curve
+
+maas_list = list()
+
+for(i in 1:number_of_child){
+  for (j in 1:time_range){
+    if (any(is.na(child_utter[[i]][[j]]) == FALSE )){
+maas_list[[child_id_char[i]]][[j]] = maas(
+koRpus::tokenize(child_utter[[i]][[j]], 
+format = "obj", tag = TRUE,lang = "en"))@Maas
+}
+else {
+maas_list[[child_id_char[i]]][[j]] = NA_character_
+}
+}
+} 
+
+```
+
+
+
+
+# Plot Vocd_D results  
+
+```{r,message=FALSE, eval=FALSE}
+
+# convert list to dataframe
+
+time = tail(time_intervals, n = 39) #define column names by age
+vocd_table = setNames(do.call(rbind.data.frame, vocd_list), c(time))
+
+
+# convert to long format
+
+a = colnames(vocd_table)
+
+vocd_long = vocd_table %>%
+mutate(id = c(rownames(vocd_table))) %>%
+gather(age, value,-id)
+
+rownames(vocd_long, 1:nrow(vocd_long))
+
+
+
+########## differentiate kids based on starting points in plot #############
+
+## assign vocd value at month 23 to "color" column
+
+vocd_long$color = ifelse(vocd_long$age == 23 &
+!is.na(vocd_long$value),
+(vocd_long$color = vocd_long$value),
+NA)
+
+
+## subset kids who have a value at age month 23 (selected kids)
+
+vocd_subset = subset(vocd_long, (vocd_long$age == 23))
+vocd_subset = vocd_subset[-which(is.na(vocd_subset$value)), ]
+
+
+## get id list of selected kids
+id_color = unique(vocd_subset$id)
+
+
+## get all records of selected kids
+vocd_color = vocd_long[which(vocd_long$id %in% id_color), ]
+
+
+## fill all cells of selected kids with their values at age month 23
+
+for (i in 1:length(id_color)) {
+id_temp = id_color[i]
+color_num = as.numeric(as.character(vocd_table[as.character(id_temp), "23"]))
+vocd_long$color[which(vocd_long$id == id_temp)] = color_num
+}
+
+
+# convert all values to numeric to be plotted
+vocd_long$id = as.numeric(vocd_long$id)
+vocd_long$age = as.numeric(vocd_long$age)
+vocd_long$value = as.numeric(vocd_long$value)
+vocd_long$color = as.numeric(vocd_long$color)
+
+
+
+# group by id
+
+vocd_long = vocd_long %>%
+group_by(id)
+
+```
+```{r,message=FALSE}
+# plot it!
+library(tidyverse)
+ggplot(vocd_long, aes(
+x = age,y = value,
+group = id,colour = color)) +
+geom_line(na.rm = TRUE) +
+xlim(0, 100) +
+theme_bw() +
+theme_set(theme_classic(base_size = 16))
+
+```
+
+
+
+# Plot MTLD measurement  
+
+```{r,message=FALSE, eval=FALSE}
+# convert long form data frame
+mtld_table = setNames(do.call(rbind.data.frame, mtld_list), c(time))
+
+
+b = colnames(mtld_table)
+
+mtld_long = mtld_table %>%
+mutate(id = c(rownames(mtld_table))) %>%
+gather(age, value, -id)
+
+rownames(mtld_long, 1:nrow(mtld_long))
+
+
+## assign mtld value at month 23 to "color" column
+
+mtld_long$color = ifelse(mtld_long$age == 23 &
+!is.na(mtld_long$value),
+(mtld_long$color = mtld_long$value),
+NA)
+
+
+## subset kids who have a value at age month 23 (selected kids)
+
+mtld_subset = subset(mtld_long, (mtld_long$age == 23))
+mtld_subset = mtld_subset[-which(is.na(mtld_subset$value)), ]
+
+
+## get id list of selected kids
+id_mtld = unique(mtld_subset$id)
+
+
+## get all values of selected kids
+mtld_color = mtld_long[which(mtld_long$id %in% id_mtld), ]
+
+
+## fill all cells of selected kids with their values at age month 23
+
+for (i in 1:length(id_mtld)) {
+id_temp2 = id_mtld[i]
+color_num2 = as.numeric(as.character(mtld_table[as.character(id_temp2), "23"]))
+mtld_long$color[which(mtld_long$id == id_temp2)] = color_num2
+
+}
+
+
+# convert all values to numeric to be plotted
+mtld_long$id = as.numeric(mtld_long$id)
+mtld_long$age = as.numeric(mtld_long$age)
+mtld_long$value = as.numeric(mtld_long$value)
+mtld_long$color = as.numeric(mtld_long$color)
+
+
+
+# group by id
+
+mtld_long = mtld_long %>%
+group_by(id)
+
+
+```
+```{r}
+# The mtld measurement cannot get good estimates of texts
+# with very few tokens (some of them only have two tokens)
+# the plot looks very messy but still shows a increasing 
+# development and a state of converging.
+
+ggplot(mtld_long, aes(
+x = age,
+y = value,
+group = id,
+colour = color
+)) +
+geom_line(na.rm = TRUE) +
+xlim(0, 120) +
+theme_bw() +
+theme_set(theme_classic(base_size = 16))
+  
+
+```
+
+
+
+# Plot MATTR measurement
+
+```{r,message=FALSE,eval=FALSE}
+
+# convert long form data frame
+mattr_table = setNames(do.call(rbind.data.frame, mattr_list), c(time))
+
+
+b = colnames(mattr_table)
+
+mattr_long = mattr_table %>%
+  mutate(id = c(rownames(mattr_table))) %>%
+  gather(age, value, -id)
+
+rownames(mattr_long,1:nrow(mattr_long))
+
+
+
+## assign mtld value at month 23 to "color" column
+
+mattr_long$color = ifelse(
+mattr_long$age == 23 &
+!is.na(mattr_long$value),
+(mattr_long$color = mattr_long$value),
+NA
+)
+
+
+## subset kids who have a value at age month 23 (selected kids)
+
+mattr_subset = subset(mattr_long, (mattr_long$age == 23))
+mattr_subset = mattr_subset[-which(is.na(mattr_subset$value)), ]
+
+
+## get id list of selected kids
+id_mattr = unique(mattr_subset$id)
+
+
+## get all values of selected kids
+mattr_color = mattr_long[which(mattr_long$id %in% id_mattr), ]
+
+
+## fill all cells of selected kids with their values at age month 23
+
+for (i in 1:length(id_mattr)) {
+id_temp3 = id_mattr[i]
+color_num3 = as.numeric(as.character(mattr_table[as.character(id_temp3), "23"]))
+mattr_long$color[which(mattr_long$id == id_temp3)] = color_num3
+
+}
+
+
+# convert all values to numeric to be plotted
+mattr_long$id = as.numeric(mattr_long$id)
+mattr_long$age = as.numeric(mattr_long$age)
+mattr_long$value = as.numeric(mattr_long$value)
+mattr_long$color = as.numeric(mattr_long$color)
+
+
+
+# group by id
+
+mattr_long = mattr_long %>%
+group_by(id)
+
+```
+```{r}
+# MATTR shows similar increasing trend and convergence around 50 months.
+
+ggplot(mattr_long, aes(
+x = age, y = value,
+group = id, colour = color)) +
+geom_line(na.rm = TRUE) +
+xlim(0, 150) +
+theme_bw() +
+theme_set(theme_classic(base_size = 16))
+```
+
+
+# Plot MAAS
+
+```{r,message=FALSE,eval=FALSE}
+# convert long form data frame
+maas_table = setNames(do.call(rbind.data.frame, maas_list), c(time))
+
+
+b = colnames(maas_table)
+
+maas_long = maas_table %>%
+mutate(id = c(rownames(maas_table))) %>%
+gather(age, value,-id)
+
+rownames(maas_long, 1:nrow(maas_long))
+
+
+# differentiate kids with different starting points (at month 23) in plot
+## assign mtld value at month 23 to "color" column
+
+maas_long$color = ifelse(maas_long$age == 23 &
+!is.na(maas_long$value),
+(maas_long$color = maas_long$value),
+NA)
+
+
+## subset kids who have a value at age month 23 (selected kids)
+
+maas_subset = subset(maas_long, (maas_long$age == 23))
+maas_subset = maas_subset[-which(is.na(maas_subset$value)), ]
+
+
+## get id list of selected kids
+id_maas = unique(maas_subset$id)
+
+
+## get all values of selected kids
+maas_color = maas_long[which(maas_long$id %in% id_maas), ]
+
+
+## fill all cells of selected kids with their values at age month 23
+
+for (i in 1:length(id_maas)) {
+id_temp4 = id_maas[i]
+color_num4 = as.numeric(as.character(maas_table[as.character(id_temp4), "23"]))
+maas_long$color[which(maas_long$id == id_temp4)] = color_num4
+
+}
+
+# convert all values to numeric to be plotted
+maas_long$id = as.numeric(maas_long$id)
+maas_long$age = as.numeric(maas_long$age)
+maas_long$value = as.numeric(maas_long$value)
+maas_long$color = as.numeric(maas_long$color)
+
+# group by id
+
+maas_long = maas_long %>%
+group_by(id)
+
+```
+```{r}
+# The results arosen from MAAS contradict to other three measurements
+# showing a decreasing trend in general.
+
+ggplot(maas_long, aes(
+x = age, y = value,
+group = id, colour = color)) +
+geom_line(na.rm = TRUE) +
+xlim(0, 120) +
+theme_bw() +
+theme_set(theme_classic(base_size = 16))
+
+```
+
