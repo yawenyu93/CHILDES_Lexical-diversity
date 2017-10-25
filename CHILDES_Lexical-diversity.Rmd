@@ -1,18 +1,18 @@
 ---
-title: "CHILDES_Lexical-diversity"
-author: "Yawen Yu"
-date: "September 28, 2017"
-output:
-  pdf_document: default
-  html_document: default
+title: "Lexical Diversity in Childes"
+author: " Yawen Yu and Dan Yurovsky"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+  toc: false
+number_sections: false
+theme: lumen
+toc_float: false
+code_folding: hide
 ---
 
 ```{r,eval=FALSE,message=FALSE,echo=FALSE}
 #install packages
-install.packages("devtools", repos = "https://github.com/hadley/devtools")
-devtools::install_github("langcog/childesr", repos = "https://github.com/langcog/childesr")
-install.packages("koRpus", repos = "https://reaktanz.de/?c=hacking&s=koRpus")
-install.packages("quanteda", repos = "http://quanteda.io")
 library(childesr)
 library(data.table)
 library(koRpus)
@@ -30,42 +30,22 @@ get.kRp.env(lang = TRUE, errorIfUnset = TRUE)
 
 ```{r,eval=FALSE, message=FALSE}
 # get partipants information
-participants = get_participants(
-collection = NULL,
-corpus = NULL,
-child = NULL,
-role = "Target_child"
-)
+participants <- get_participants(role = "Target_child")
 
 
 # get utterances of all children
-child_data = get_utterances(
-collection = NULL,
-corpus = NULL,
-child = NULL,
-role = "Target_child"
-)
-
-
-# convert age from day to month
-day_to_month = 30.5
-child_data$speaker_age = child_data$speaker_age / day_to_month
-
+child_data <- get_utterances(role = "Target_child") %>%
+  mutate(speaker_age = speaker_age / 30.5)
 
 # remove unintelligible utterances
 murmur = c("xxx", "yyy", "yyy_yyy")
-gloss = as.character(child_data$gloss)
-gloss = removeWords(gloss, murmur)
-gloss = gsub("xxx", "", gloss)
-gloss = gsub("yyy", "", gloss)
-child_data$gloss = gloss
 
-
-# remove missing data
-child_data$gloss[grepl("^\\s*$", child_data$gloss)] = NA
-child_data = child_data[-which(is.na(child_data$gloss)),]
-
-
+child_data_clean <- child_data %>%
+  filter(!gloss %in% murmur) %>%
+  mutate(gloss = removeWords(gloss, murmur),
+         gloss = gsub("xxx", "", gloss),
+         gloss = gsub("yyy", "", gloss)) %>%
+  filter(!grepl("^\\s*$", gloss))
 ```
 
 
@@ -73,24 +53,13 @@ child_data = child_data[-which(is.na(child_data$gloss)),]
 # Participants characteristic: children's age
 
 ```{r, message=FALSE}
-# replace NA in age columns
-## if "speaker_age" is blank, fill "speaker_age" column with value in "target_child_age"
-## if no age is specified, assign "-1" to "speaker_age" column
-
-child_data$speaker_age = ifelse(
-is.na(child_data$speaker_age),
-child_data$target_child_age,
-child_data$speaker_age
-)
-
-child_data$speaker_age = ifelse(is.na(child_data$speaker_age), -1, child_data$speaker_age)
-
+child_data_clean_age <- child_data_clean %>%
+  mutate(age = if_else(is.na(speaker_age), target_child_age, speaker_age)) %>%
+  filter(!is.na(age))
 
 # most kids are at age of 20~70 month
-child_age = child_data$speaker_age
-ggplot(child_data, aes(x = child_age)) +
-geom_density()
-
+ggplot(child_data_clean_age, aes(x = age)) +
+  geom_density()
 ```
 
 
@@ -98,56 +67,47 @@ geom_density()
 # Subset each kid's utterances over time
 
 ```{r, eval = FALSE, message=FALSE}
+min_age <- floor(min(child_data_clean_age$age))
+max_age <- floor(max(child_data_clean_age$age))
 
-# make a id list
+child_data_binned <- child_data_clean_age %>%
+  mutate(age_bin = cut(age, breaks = seq(min_age, max_age, 6)))
 
-child_id = unique(child_data$speaker_id)
-child_id_char = as.character(child_id)
-number_of_child = length(child_id)
+providence_corpus <- participants %>%
+  filter(corpus_name == "Providence") %>%
+  distinct(corpus_id) %>%
+  pull(corpus_id)
+
+child_data_collapsed <- child_data_binned %>%
+  filter(corpus_id == providence_corpus) %>%
+  group_by(corpus_id, target_child_id, age_bin) %>%
+  summarise(gloss = paste0(gloss, collapse = " "))
+
+  
+child_data_tokenized <- child_data_collapsed %>%
+  split(paste0(.$corpus_id, "-", .$target_child_id, "-", .$age_bin)) 
 
 
-# pick time intervals
-
-min_age = min(child_data$speaker_age, na.rm = TRUE)
-max_age = max(child_data$speaker_age, na.rm = TRUE)
-time_intervals = c(seq(min_age, max_age, 6), round(max_age))
-time_range = length(time_intervals) - 1
-
-
-# make lists based on id
-
-child_raw_list = list()
-
-for (i in 1:number_of_child) {
-child_raw_list[[child_id_char[i]]] = child_data[which(child_data$speaker_id == child_id[i]),]
+tokenize_and_ld <- function(df) {
+  tokenized_df <- koRpus::tokenize(df$gloss, format = "obj", lang = "en", tag = TRUE)
+  data_frame(MTLD = MTLD(tokenized_df)@MTLD$MTLD)
 }
 
 
+child_data_mtld <- map(child_data_tokenized, tokenize_and_ld) %>% 
+  bind_rows(.id = "id") %>%
+  separate(col = id, into = c("corpus_id", "target_child_id", "age_bin"), sep = "-") %>%
+  mutate(corpus_id = as.integer(corpus_id),
+         target_child_id = as.integer(target_child_id)) %>%
+  left_join(filter(participants, role == "Target_Child")) 
 
-# add second dimmension to lists according to time intervals (6 months)
+child_data_mtld <- child_data_mtld %>%
+  mutate(age_bin = factor(age_bin, levels = levels(child_data_binned$age_bin)))
 
-child_utter = list()
-
-for (i in 1:number_of_child) {
-for (j in 1:time_range) {
-child_utter[[child_id_char[i]]][[j]] = child_raw_list[[child_id_char[i]]]$gloss
-[child_raw_list[[child_id_char[i]]]$speaker_age < time_intervals[j +1] &
-child_raw_list[[child_id_char[i]]]$speaker_age > time_intervals[j]]
-}
-}
-
-
-
-# convert chracter(0) to NA in child_utter list
-
-for (i in 1:number_of_child) {
-child_utter[[i]] = lapply(child_utter[[i]], function(x)
-if (identical(x, character(0)))
-NA_character_
-else
-x)
-}
-
+ggplot(child_data_mtld, aes(x = age_bin, y = MTLD, 
+                            color = name, group = name))+ 
+  geom_smooth(se = F) + 
+  geom_point()
 ```
 
 
