@@ -292,7 +292,7 @@ mom_month_mtld <- map(mom_month_tokenized,tokenize_mtld)%>%
   filter(!length < 100) 
 ```
 
-# Plot children's LD 
+* Plot children's LD  
 
 ```{r, message=FALSE}
 mean_mtld <- mean(child_data_mtld$mtld)
@@ -325,7 +325,7 @@ ggplot(child_month_mtld, aes(x = age, y = mtld,
 ```
 
 
-# Plot Moms' LD 
+* Plot Moms' LD 
 
 ```{r, message=FALSE}
 # MTLD results show greater disparity among moms than Vocd_D, which is very puzzling
@@ -370,7 +370,7 @@ ggplot(mom_month_mtld,aes(x=age,y=mtld,
 
 
 
-# Any relation between mothers' LD with their children's LD?
+* Any relation between mothers' LD with their children's LD? 
 
 ```{r, message=FALSE}
 ## combine data of moms and their children, 134 in total
