@@ -1,24 +1,24 @@
 ---
 title: "Lexical Diversity in Childes"
-author: " Yawen Yu and Dan Yurovsky"
-date: "`r Sys.Date()`"
-output: 
-  html_document:
-  toc: false
-number_sections: false
+author: ' Yawen Yu and Dan Yurovsky'
+date: '`r Sys.Date()`'
+output:
+  pdf_document: default
+  html_document: null
+  toc: no
+number_sections: no
 theme: lumen
-toc_float: false
 code_folding: hide
+toc_float: no
 ---
 
-```{r,eval=FALSE,message=FALSE,echo=FALSE}
+```{r,setup,echo=FALSE,message=FALSE}
 #install packages
 library(childesr)
 library(data.table)
 library(koRpus)
-library(quanteda)
 library(tidyverse)
-library(tm)
+load("~/Desktop/application/lexical diversity/trial 3/CHILDES_Lexical-diversity.RData")
 
 #set language enviroment as english
 set.kRp.env(lang = "kRp.env", validate = TRUE)
@@ -26,16 +26,18 @@ get.kRp.env(lang = TRUE, errorIfUnset = TRUE)
 ```
 
 
-# Get and Clean Data
+* Get and Clean Data 
 
-```{r,eval=FALSE, message=FALSE}
+```{r, message=FALSE,eval=FALSE}
 # get partipants information
 participants <- get_participants(role = "Target_child")
 
 
-# get utterances of all children
+# get utterances of all children 
+# convert age from days to months
 child_data <- get_utterances(role = "Target_child") %>%
-  mutate(speaker_age = speaker_age / 30.5)
+  mutate(speaker_age = speaker_age / 30.5)%>%
+  mutate(target_child_age = target_child_age / 30.5)
 
 # remove unintelligible utterances
 murmur = c("xxx", "yyy", "yyy_yyy")
@@ -50,481 +52,384 @@ child_data_clean <- child_data %>%
 
 
 
-# Participants characteristic: children's age
+* Participants characteristic: children's age 
 
 ```{r, message=FALSE}
+# only keep data of children who have age and id information
 child_data_clean_age <- child_data_clean %>%
-  mutate(age = if_else(is.na(speaker_age), target_child_age, speaker_age)) %>%
-  filter(!is.na(age))
+  mutate(age = if_else(is.na(speaker_age), target_child_age, speaker_age))  %>%
+  filter(!is.na(age)) %>%
+  filter(!is.na(speaker_id))
 
-# most kids are at age of 20~70 month
+# most kids are at age 20~70 months
 ggplot(child_data_clean_age, aes(x = age)) +
-  geom_density()
+  geom_density()+
+  theme_classic()
 ```
 
 
 
-# Subset each kid's utterances over time
+* Subset kids' data over time 
 
-```{r, eval = FALSE, message=FALSE}
+```{r, message=FALSE, eval=FALSE}
+# get minimum age and maximum age of the dataset
 min_age <- floor(min(child_data_clean_age$age))
 max_age <- floor(max(child_data_clean_age$age))
 
+# add a new column grouping every 6 months data of each kid
 child_data_binned <- child_data_clean_age %>%
-  mutate(age_bin = cut(age, breaks = seq(min_age, max_age, 6)))
+  mutate(age_bin = cut(age, breaks = seq(min_age, max_age, 6), ordered_result = TRUE))
 
-providence_corpus <- participants %>%
-  filter(corpus_name == "Providence") %>%
+# use corpus_id and speaker_id to distinguish individual child
+corpus_id <- participants %>%
   distinct(corpus_id) %>%
   pull(corpus_id)
 
+speaker_id <-participants %>%
+  distinct(id) %>%
+  pull(id)
+
 child_data_collapsed <- child_data_binned %>%
-  filter(corpus_id == providence_corpus) %>%
-  group_by(corpus_id, target_child_id, age_bin) %>%
-  summarise(gloss = paste0(gloss, collapse = " "))
+  filter(corpus_id == corpus_id) %>%
+  filter(speaker_id == speaker_id) %>%
+  group_by(corpus_id, speaker_id, age_bin) %>%
+  summarise(gloss = paste0(gloss, collapse = " ")) 
 
-  
+# only keep complete rows
+child_data_collapsed <- child_data_collapsed[complete.cases(child_data_collapsed),]
+
+# combine all gloss of each individual child at a certain age interval 
 child_data_tokenized <- child_data_collapsed %>%
-  split(paste0(.$corpus_id, "-", .$target_child_id, "-", .$age_bin)) 
+  split(paste0(.$corpus_id, "-", .$speaker_id, "-", .$age_bin)) 
+
+```
 
 
-tokenize_and_ld <- function(df) {
+* Measure children's LD over time 
+
+```{r, message=FALSE, eval=FALSE}
+# create a function to tokenize and measure diversity 
+# with Measure of Textual Lexical Diversity(MTLD) 
+tokenize_mtld <- function(df) {
   tokenized_df <- koRpus::tokenize(df$gloss, format = "obj", lang = "en", tag = TRUE)
-  data_frame(MTLD = MTLD(tokenized_df)@MTLD$MTLD)
+  MTLD <- MTLD(tokenized_df)
+  mtld <- data_frame(mtld = MTLD@MTLD$MTLD)
+  length <- data_frame(length = MTLD@tt$num.tokens)
+  merge(x = length,y = mtld, by = NULL)
 }
 
+# creat a function to measure diversity with Vocd-D
+tokenize_vocd <- function(df) {
+  tokenized_df <- koRpus::tokenize(df$gloss,format = "obj", lang = "en", tag = TRUE)
+  VOCD <- HDD(tokenized_df)
+  vocd <- data_frame(vocd =VOCD@HDD$HDD)
+  length <- data_frame(length = VOCD@tt$num.tokens)
+  merge(x = vocd, y = length)}
+  
 
-child_data_mtld <- map(child_data_tokenized, tokenize_and_ld) %>% 
+# combine children's information and measurement values
+# remove unreliable results caused by extremely short speeches (tokens<100)
+child_data_mtld <- map(child_data_tokenized, tokenize_mtld)%>% 
+  bind_rows(.id = "id") %>%
+  separate(col = id, into = c("corpus_id", "speaker_id", "age_bin"), sep = "-") %>%
+  mutate(corpus_id = as.integer(corpus_id),
+         speaker_id = as.integer(speaker_id)) %>%
+  filter(!mtld == as.numeric("inf")) %>%
+  filter(!length < 100) 
+
+child_data_vocd <- map(child_data_tokenized, tokenize_vocd)%>% 
+  bind_rows(.id = "id") %>%
+  separate(col = id, into = c("corpus_id", "speaker_id", "age_bin"), sep = "-") %>%
+  mutate(corpus_id = as.integer(corpus_id),
+         speaker_id = as.integer(speaker_id)) %>%
+  filter(!length < 100) 
+
+
+child_data_mtld <- child_data_mtld %>%
+  mutate(age_bin = factor(age_bin, levels = levels(child_data_binned$age_bin))) 
+
+child_data_vocd <- child_data_vocd %>%
+  mutate(age_bin = factor(age_bin, levels = levels(child_data_binned$age_bin)))
+
+# filter kids' records who have more than one measurement 
+# so that we could know their development over time
+mtld_filter <- function(df){
+  nmtld <- aggregate(child_data_mtld$mtld, by = list(speaker_id = child_data_mtld$speaker_id), length)
+  nchild <- nmtld$speaker_id[(nmtld$x != 1)]
+  df <- df %>%
+  filter(speaker_id %in% nchild)%>%
+  group_by(speaker_id)
+}
+
+vocd_filter <- function(df){
+  nvocd <- aggregate(df$vocd, by = list(speaker_id = df$speaker_id), length)
+  nchild <- nvocd$speaker_id[(nvocd$x != 1)]
+  df <- df %>%
+  filter(speaker_id %in% nchild)%>%
+  group_by(speaker_id)
+}
+
+child_mtld_dev <- mtld_filter(child_data_mtld)
+child_vocd_dev <- vocd_filter(child_data_vocd)
+
+# we capture 162 children's data in total
+child_id_mtld <- unique(child_mtld_dev$speaker_id)
+child_id_vocd <- unique(child_vocd_dev$speaker_id)
+
+
+############################### Measure by months ##############################
+# MTLD has an advantage of measuring texts subsequtially
+# so let's measure every month data that is usually one coherent session
+child_month_binned <- child_data_clean_age %>%
+  mutate(age = round(speaker_age))
+
+
+child_month_collapsed <- child_month_binned %>%
+  filter(corpus_id == corpus_id) %>%
+  filter(speaker_id == speaker_id) %>%
+  group_by(corpus_id, speaker_id, age) %>%
+  summarise(gloss = paste0(gloss, collapse = " ")) 
+
+child_month_collapsed <- child_month_collapsed[complete.cases(child_month_collapsed),]
+
+child_month_tokenized <- child_month_collapsed %>%
+  split(paste0(.$corpus_id, "-", .$speaker_id, "-", .$age)) 
+
+child_month_mtld <- map(child_month_tokenized, tokenize_mtld)%>% 
+  bind_rows(.id = "id") %>%
+  separate(col = id, into = c("corpus_id", "speaker_id", "age"), sep = "-") %>%
+  mutate(corpus_id = as.integer(corpus_id),
+         speaker_id = as.integer(speaker_id),
+         age = as.numeric(age)) %>%
+  filter(!mtld == as.numeric("inf")) %>%
+  filter(!length < 100) 
+
+child_month_mtld <- mtld_filter(child_month_mtld)
+```
+
+
+* Measure mothers' LD over time 
+
+```{r, message=FALSE,eval=FALSE}
+# get partipants information
+mom_participants <- get_participants(role = "Mother")
+
+# get their utterances AND convert age from days to months
+mom_data <- get_utterances(role = "Mother") %>%
+  mutate(speaker_age = speaker_age / 30.5)%>%
+  mutate(target_child_age = target_child_age / 30.5)
+
+# remove unintelligible utterances
+# only keep the records of moms who can be identified
+mom_data_clean <- mom_data %>%
+  filter(!gloss %in% murmur) %>%
+  mutate(gloss = removeWords(gloss, murmur),
+         gloss = gsub("xxx", "", gloss),
+         gloss = gsub("yyy", "", gloss)) %>%
+  filter(!grepl("^\\s*$", gloss)) %>%
+  filter(target_child_id %in% child_id)
+
+# subset by 6 months
+mom_data_binned <- mom_data_clean %>%
+  mutate(age_bin = cut(target_child_age, breaks = seq(min_age, max_age, 6)))
+
+mom_data_collapsed <- mom_data_binned %>%
+  filter(corpus_id == corpus_id) %>%
+  filter(target_child_id == target_child_id) %>%
+  group_by(corpus_id, target_child_id, age_bin) %>%
+  summarise(gloss = paste0(gloss, collapse = " ")) 
+
+mom_data_collapsed <- mom_data_collapsed[complete.cases(mom_data_collapsed),]
+  
+mom_data_tokenized <- mom_data_collapsed %>%
+  split(paste0(.$corpus_id, "-", .$target_child_id, "-", .$age_bin)) 
+
+# measure moms' LD by 6 months
+## by MTLD
+mom_data_mtld <- map(mom_data_tokenized,tokenize_mtld)%>% 
   bind_rows(.id = "id") %>%
   separate(col = id, into = c("corpus_id", "target_child_id", "age_bin"), sep = "-") %>%
   mutate(corpus_id = as.integer(corpus_id),
-         target_child_id = as.integer(target_child_id)) %>%
-  left_join(filter(participants, role == "Target_Child")) 
-
-child_data_mtld <- child_data_mtld %>%
-  mutate(age_bin = factor(age_bin, levels = levels(child_data_binned$age_bin)))
-
-ggplot(child_data_mtld, aes(x = age_bin, y = MTLD, 
-                            color = name, group = name))+ 
-  geom_smooth(se = F) + 
-  geom_point()
-```
-
-
-
-# Measure lexical diversity with Vocd-D(HDD), MTLD, MATTR, MAAS  
-
-```{r,message=FALSE,eval=FALSE}
-
-# Vocd-D/HDD
-
-vocd_list = list()
-
-for (i in 1:number_of_child) {
-for (j in 1:time_range) {
-if (any(is.na(child_utter[[i]][[j]]) == FALSE)) {
-vocd_list[[child_id_char[i]]][[j]] = HDD((
-koRpus::tokenize(
-child_utter[[i]][[j]],
-format = "obj",
-tag = TRUE,
-lang = "en"
-)
-),
-rand.sample = 42)@HDD$HDD
-}
-else {
-vocd_list[[child_id_char[i]]][[j]] = NA_character_
-  }
- }
-}
-
-
-
-# MTLD
-## measure sequetially and its results are not correlated with text length; 
-## it performs especially well when text length > 100.
-
-mtld_list = list()
-
-for (i in 1:number_of_child) {
-for (j in 1:time_range) {
-if (any(is.na(child_utter[[i]][[j]]) == FALSE)) {
-mtld_list[[child_id_char[i]]][[j]] = MTLD(
-  koRpus::tokenize(child_utter[[i]][[j]],
-format = "obj",tag = TRUE,lang = "en"),
-factor.size = 0.72,min.tokens = 9)@MTLD$MTLD
-}
-else {
-mtld_list[[child_id_char[i]]][[j]] = NA_character_
-}
-}
-}
-
-
-
-# MATTR 
-## take 100 tokens as window 
-
-mattr_list = list()
-
-for(i in 1:number_of_child){
-  for (j in 1:time_range){
-    if (any(is.na(child_utter[[i]][[j]]) == FALSE )){
-mattr_list[[child_id_char[i]]][[j]] = MATTR(
-koRpus::tokenize(child_utter[[i]][[j]], 
-format = "obj", tag = TRUE,lang = "en"), window = 100)@MATTR$MATTR
-}
-else {
- mattr_list[[child_id_char[i]]][[j]] = NA_character_
-}
-}
-}
-
-
-
-# MAAS 
-# It assumes the TTR curve can be fitted relatively well by a logarithmic curve
-
-maas_list = list()
-
-for(i in 1:number_of_child){
-  for (j in 1:time_range){
-    if (any(is.na(child_utter[[i]][[j]]) == FALSE )){
-maas_list[[child_id_char[i]]][[j]] = maas(
-koRpus::tokenize(child_utter[[i]][[j]], 
-format = "obj", tag = TRUE,lang = "en"))@Maas
-}
-else {
-maas_list[[child_id_char[i]]][[j]] = NA_character_
-}
-}
-} 
-
-```
-
-
-
-
-# Plot Vocd_D results  
-
-```{r,message=FALSE, eval=FALSE}
-
-# convert list to dataframe
-
-time = tail(time_intervals, n = 39) #define column names by age
-vocd_table = setNames(do.call(rbind.data.frame, vocd_list), c(time))
-
-
-# convert to long format
-
-a = colnames(vocd_table)
-
-vocd_long = vocd_table %>%
-mutate(id = c(rownames(vocd_table))) %>%
-gather(age, value,-id)
-
-rownames(vocd_long, 1:nrow(vocd_long))
-
-
-
-########## differentiate kids based on starting points in plot #############
-
-## assign vocd value at month 23 to "color" column
-
-vocd_long$color = ifelse(vocd_long$age == 23 &
-!is.na(vocd_long$value),
-(vocd_long$color = vocd_long$value),
-NA)
-
-
-## subset kids who have a value at age month 23 (selected kids)
-
-vocd_subset = subset(vocd_long, (vocd_long$age == 23))
-vocd_subset = vocd_subset[-which(is.na(vocd_subset$value)), ]
-
-
-## get id list of selected kids
-id_color = unique(vocd_subset$id)
-
-
-## get all records of selected kids
-vocd_color = vocd_long[which(vocd_long$id %in% id_color), ]
-
-
-## fill all cells of selected kids with their values at age month 23
-
-for (i in 1:length(id_color)) {
-id_temp = id_color[i]
-color_num = as.numeric(as.character(vocd_table[as.character(id_temp), "23"]))
-vocd_long$color[which(vocd_long$id == id_temp)] = color_num
-}
-
-
-# convert all values to numeric to be plotted
-vocd_long$id = as.numeric(vocd_long$id)
-vocd_long$age = as.numeric(vocd_long$age)
-vocd_long$value = as.numeric(vocd_long$value)
-vocd_long$color = as.numeric(vocd_long$color)
-
-
-
-# group by id
-
-vocd_long = vocd_long %>%
-group_by(id)
-
-```
-```{r,message=FALSE}
-# plot it!
-library(tidyverse)
-ggplot(vocd_long, aes(
-x = age,y = value,
-group = id,colour = color)) +
-geom_line(na.rm = TRUE) +
-xlim(0, 100) +
-theme_bw() +
-theme_set(theme_classic(base_size = 16))
-
-```
-
-
-
-# Plot MTLD measurement  
-
-```{r,message=FALSE, eval=FALSE}
-# convert long form data frame
-mtld_table = setNames(do.call(rbind.data.frame, mtld_list), c(time))
-
-
-b = colnames(mtld_table)
-
-mtld_long = mtld_table %>%
-mutate(id = c(rownames(mtld_table))) %>%
-gather(age, value, -id)
-
-rownames(mtld_long, 1:nrow(mtld_long))
-
-
-## assign mtld value at month 23 to "color" column
-
-mtld_long$color = ifelse(mtld_long$age == 23 &
-!is.na(mtld_long$value),
-(mtld_long$color = mtld_long$value),
-NA)
-
-
-## subset kids who have a value at age month 23 (selected kids)
-
-mtld_subset = subset(mtld_long, (mtld_long$age == 23))
-mtld_subset = mtld_subset[-which(is.na(mtld_subset$value)), ]
-
-
-## get id list of selected kids
-id_mtld = unique(mtld_subset$id)
-
-
-## get all values of selected kids
-mtld_color = mtld_long[which(mtld_long$id %in% id_mtld), ]
-
-
-## fill all cells of selected kids with their values at age month 23
-
-for (i in 1:length(id_mtld)) {
-id_temp2 = id_mtld[i]
-color_num2 = as.numeric(as.character(mtld_table[as.character(id_temp2), "23"]))
-mtld_long$color[which(mtld_long$id == id_temp2)] = color_num2
-
-}
-
-
-# convert all values to numeric to be plotted
-mtld_long$id = as.numeric(mtld_long$id)
-mtld_long$age = as.numeric(mtld_long$age)
-mtld_long$value = as.numeric(mtld_long$value)
-mtld_long$color = as.numeric(mtld_long$color)
-
-
-
-# group by id
-
-mtld_long = mtld_long %>%
-group_by(id)
-
-
-```
-```{r}
-# The mtld measurement cannot get good estimates of texts
-# with very few tokens (some of them only have two tokens)
-# the plot looks very messy but still shows a increasing 
-# development and a state of converging.
-
-ggplot(mtld_long, aes(
-x = age,
-y = value,
-group = id,
-colour = color
-)) +
-geom_line(na.rm = TRUE) +
-xlim(0, 120) +
-theme_bw() +
-theme_set(theme_classic(base_size = 16))
+         speaker_id = as.integer(target_child_id)) %>%
+  filter(!mtld == as.numeric("inf")) %>%
+  filter(!length < 100) 
+
+## by Vocd-D
+mom_data_vocd <- map(mom_data_tokenized, tokenize_vocd) %>%
+  bind_rows(.id = "id") %>%
+  separate(col = id,into = c("corpus_id", "target_child_id", "age_bin"),
+  sep = "-" ) %>%
+  mutate(corpus_id = as.integer(corpus_id),
+  speaker_id = as.integer(target_child_id)) %>%
+  filter(!length < 100)
   
+mom_month_binned <- mom_data_clean %>%
+  mutate(age_bin = cut(target_child_age,
+  breaks = seq(min_age, max_age, 1),ordered_result = TRUE))
+
+# measure moms' MTLD by month 
+mom_month_binned <- mom_data_clean %>%
+  mutate(age = round(target_child_age))
+
+mom_month_collapsed <- mom_month_binned %>%
+  filter(corpus_id == corpus_id) %>%
+  filter(target_child_id == target_child_id) %>%
+  group_by(corpus_id, target_child_id, age) %>%
+  summarise(gloss = paste0(gloss, collapse = " ")) 
+
+mom_month_collapsed <- mom_month_collapsed[complete.cases(mom_month_collapsed),]
+  
+mom_month_tokenized <- mom_month_collapsed %>%
+  split(paste0(.$corpus_id, "-", .$target_child_id, "-", .$age)) 
+
+mom_month_mtld <- map(mom_month_tokenized,tokenize_mtld)%>% 
+  bind_rows(.id = "id") %>%
+  separate(col = id, into = c("corpus_id", "target_child_id", "age"), sep = "-") %>%
+  mutate(corpus_id = as.integer(corpus_id),
+         speaker_id = as.integer(target_child_id),
+         age = as.numeric(age)) %>%
+  filter(!mtld == as.numeric("inf")) %>%
+  filter(!length < 100) 
+```
+
+# Plot children's LD 
+
+```{r, message=FALSE}
+mean_mtld <- mean(child_data_mtld$mtld)
+mean_vocd <- mean(child_data_vocd$vocd)
+
+# Note: the convergance after 50 months might relate to
+# the large fluctuations of Vocd-D evaluating high LD texts
+ggplot(child_vocd_dev, aes(x = age_bin, y = vocd,
+  group = age_bin)) +
+  geom_boxplot() +
+  geom_smooth(method = loess) +
+  theme_classic() +
+  labs(title = "Vocd_D: Children's Lexical Diversity by 6 Months  ", subtitle = "3 ~ 147 Months")
+
+ggplot(child_mtld_dev, aes(x = age_bin, y = mtld,
+  group = age_bin)) +
+  geom_boxplot() +
+  geom_smooth(method = loess) +
+  theme_classic()+
+  labs(title = "MTLD: Children's Lexical Diversity by 6 Months", subtitle = "3 ~ 147 Months")
+
+ggplot(child_month_mtld, aes(x = age, y = mtld,
+  group = age)) +
+  geom_boxplot(outlier.size = 0.5) +
+  geom_smooth(method = loess, se = FALSE) +
+  xlim(3, 147) +
+  theme_classic() +
+  labs(title = "MTLD: Childrens' Lexical Diversity by Month", subtitle = "3 ~ 147 Months")
 
 ```
 
 
+# Plot Moms' LD 
 
-# Plot MATTR measurement
+```{r, message=FALSE}
+# MTLD results show greater disparity among moms than Vocd_D, which is very puzzling
+mean_mtld_mom <- mean(mom_data_mtld$mtld)
+mean_vocd_mom <- mean(mom_data_vocd$vocd)
+mean_mtld_mom_month<- mean(mom_month_mtld$mtld)
 
-```{r,message=FALSE,eval=FALSE}
+ggplot(mom_data_vocd, aes(x = vocd))+
+  geom_histogram()+
+  geom_vline(xintercept = mean_vocd_mom, colour = "gold", size = 2)+
+  theme_classic()+
+  labs(title = " Histogram of Moms' Vocd_D by 6 Months")
 
-# convert long form data frame
-mattr_table = setNames(do.call(rbind.data.frame, mattr_list), c(time))
+ggplot(mom_data_mtld, aes(x = mtld))+
+  geom_histogram()+
+  geom_vline(xintercept = mean_mtld_mom, colour = "gold", size = 2)+
+  theme_classic()+
+  labs(title = " Histogram of Moms' MTLD by 6 Months")
 
+ggplot(mom_month_mtld, aes(x=mtld))+
+  geom_histogram(bins=30)+
+  theme_classic()+
+  labs(title = " Histogram of Moms' MTLD by Month")
 
-b = colnames(mattr_table)
+ggplot(mom_data_vocd,aes(x=age_bin,y=vocd))+
+      geom_boxplot()+
+      labs(title = " Vocd_D: Moms' Lexical Diversity of Mothers by 6 Months")+
+      theme_classic()
 
-mattr_long = mattr_table %>%
-  mutate(id = c(rownames(mattr_table))) %>%
-  gather(age, value, -id)
+ggplot(mom_data_mtld,aes(x=age_bin,y=mtld))+
+      geom_boxplot()+
+      labs(title = " MTLD: Moms' Lexical Diversity of Mothers by 6 Months")+
+      theme_classic()
 
-rownames(mattr_long,1:nrow(mattr_long))
-
-
-
-## assign mtld value at month 23 to "color" column
-
-mattr_long$color = ifelse(
-mattr_long$age == 23 &
-!is.na(mattr_long$value),
-(mattr_long$color = mattr_long$value),
-NA
-)
-
-
-## subset kids who have a value at age month 23 (selected kids)
-
-mattr_subset = subset(mattr_long, (mattr_long$age == 23))
-mattr_subset = mattr_subset[-which(is.na(mattr_subset$value)), ]
-
-
-## get id list of selected kids
-id_mattr = unique(mattr_subset$id)
-
-
-## get all values of selected kids
-mattr_color = mattr_long[which(mattr_long$id %in% id_mattr), ]
-
-
-## fill all cells of selected kids with their values at age month 23
-
-for (i in 1:length(id_mattr)) {
-id_temp3 = id_mattr[i]
-color_num3 = as.numeric(as.character(mattr_table[as.character(id_temp3), "23"]))
-mattr_long$color[which(mattr_long$id == id_temp3)] = color_num3
-
-}
-
-
-# convert all values to numeric to be plotted
-mattr_long$id = as.numeric(mattr_long$id)
-mattr_long$age = as.numeric(mattr_long$age)
-mattr_long$value = as.numeric(mattr_long$value)
-mattr_long$color = as.numeric(mattr_long$color)
-
-
-
-# group by id
-
-mattr_long = mattr_long %>%
-group_by(id)
-
-```
-```{r}
-# MATTR shows similar increasing trend and convergence around 50 months.
-
-ggplot(mattr_long, aes(
-x = age, y = value,
-group = id, colour = color)) +
-geom_line(na.rm = TRUE) +
-xlim(0, 150) +
-theme_bw() +
-theme_set(theme_classic(base_size = 16))
+ggplot(mom_month_mtld,aes(x=age,y=mtld, 
+                          group = age))+
+      geom_boxplot(outlier.size = 0.5)+
+      xlim(0,150)+
+      labs(title = " MTLD: Moms' Lexical Diversity of Mothers by Month")+
+      theme_classic()
 ```
 
 
-# Plot MAAS
 
-```{r,message=FALSE,eval=FALSE}
-# convert long form data frame
-maas_table = setNames(do.call(rbind.data.frame, maas_list), c(time))
+# Any relation between mothers' LD with their children's LD?
 
+```{r, message=FALSE}
+## combine data of moms and their children, 134 in total
+mom_id <- unique(mom_month_mtld$target_child_id)
+combine_month_mtld <- child_month_mtld %>%
+  filter(speaker_id %in% mom_id) 
 
-b = colnames(maas_table)
+combine_month_mtld <-
+  merge(x = combine_month_mtld,
+  y = mom_month_mtld[, c("speaker_id", "age", "length", "mtld")],
+  by = c("speaker_id", "age"))
 
-maas_long = maas_table %>%
-mutate(id = c(rownames(maas_table))) %>%
-gather(age, value,-id)
+## look at change of children's LD
+combine_month_mtld_dif <- child_month_mtld %>%
+  filter(speaker_id %in% mom_id) %>%
+  group_by(speaker_id) %>%
+  mutate(change = lag(mtld))
 
-rownames(maas_long, 1:nrow(maas_long))
-
-
-# differentiate kids with different starting points (at month 23) in plot
-## assign mtld value at month 23 to "color" column
-
-maas_long$color = ifelse(maas_long$age == 23 &
-!is.na(maas_long$value),
-(maas_long$color = maas_long$value),
-NA)
-
-
-## subset kids who have a value at age month 23 (selected kids)
-
-maas_subset = subset(maas_long, (maas_long$age == 23))
-maas_subset = maas_subset[-which(is.na(maas_subset$value)), ]
+combine_month_mtld_dif <-
+  merge(x = combine_month_mtld_dif,
+  y = mom_month_mtld[, c("speaker_id", "age", "length", "mtld")],
+  by = c("speaker_id", "age"))
 
 
-## get id list of selected kids
-id_maas = unique(maas_subset$id)
+# linear regression
+# only children's and mothers' MTLD
+lm_child_mom <- lm(mtld.x ~ mtld.y, combine_month_mtld)
+summary(lm_child_mom)
 
 
-## get all values of selected kids
-maas_color = maas_long[which(maas_long$id %in% id_maas), ]
+# add another variable log(age)
+lm_child_mom_lg <-lm(mtld.x ~ mtld.y + log(age),combine_month_mtld)
+summary(lm_child_mom_lg)
+plot(fitted(lm_child_mom_lg), residuals(lm_child_mom_lg))
 
 
-## fill all cells of selected kids with their values at age month 23
+# children's development and mothers' MTLD
+lm_child_mom_dif <- lm(change ~ mtld.y, combine_month_mtld_dif)
+summary(lm_child_mom_dif)
 
-for (i in 1:length(id_maas)) {
-id_temp4 = id_maas[i]
-color_num4 = as.numeric(as.character(maas_table[as.character(id_temp4), "23"]))
-maas_long$color[which(maas_long$id == id_temp4)] = color_num4
 
-}
+# moms' and children's LD at 24 months
+## 69 kids
+combine_child_mom_24 <- combine_month_mtld[which(combine_month_mtld$age == 24),]
+lm_child_mom_24 <- lm(mtld.x ~ mtld.y, combine_child_mom_24)
+summary(lm_child_mom_24)
+plot(fitted(lm_child_mom_24), residuals(lm_child_mom_24))
 
-# convert all values to numeric to be plotted
-maas_long$id = as.numeric(maas_long$id)
-maas_long$age = as.numeric(maas_long$age)
-maas_long$value = as.numeric(maas_long$value)
-maas_long$color = as.numeric(maas_long$color)
 
-# group by id
+# moms' and children's LD at 30 months
+## 65 kids
+combine_child_mom_30 <- combine_month_mtld[which(combine_month_mtld$age == 30),]
+lm_child_mom_30 <- lm(mtld.x ~ mtld.y, combine_child_mom_30)
+summary(lm_child_mom_30)
+plot(fitted(lm_child_mom_30), residuals(lm_child_mom_30))
 
-maas_long = maas_long %>%
-group_by(id)
 
-```
-```{r}
-# The results arosen from MAAS contradict to other three measurements
-# showing a decreasing trend in general.
-
-ggplot(maas_long, aes(
-x = age, y = value,
-group = id, colour = color)) +
-geom_line(na.rm = TRUE) +
-xlim(0, 120) +
-theme_bw() +
-theme_set(theme_classic(base_size = 16))
+#MTLD measurement associates with utterance length
+## need to control for length
+summary(lm(mtld.x ~ length.x,combine_month_mtld))
 
 ```
-
