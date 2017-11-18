@@ -1,0 +1,183 @@
+---
+title: "Fitting Models"
+author: 'Yawen Yu and Dan Yurovsky'
+date: '`r Sys.Date()`'
+output:
+  pdf_document: default
+  html_document: null
+  toc: no
+number_sections: no
+theme: lumen
+code_folding: hide
+toc_float: no
+---
+
+
+```{r, global chunck options, include=FALSE}
+knitr::opts_chunk$set(message=FALSE, results='markup',warning =  FALSE)
+options(xtable.comment=FALSE)
+```
+
+```{r, setup, echo=FALSE, warning=FALSE}
+library(mice)
+library(tidyverse)
+library(lme4)
+load("~/Desktop/application/lexical diversity/trial 3/CHILDES_Lexical-diversity.RData")
+```
+
+
+# Mixed-effect model I 
+```{r,message=F}
+# scale the MTLD values since kids normally have slighly lower LD
+lmer_child_mom_lg <-lmer(scale(mtld.x) ~ scale(mtld.y) -1 +log(age) + (1+log(age)|speaker_id), combine_month_mtld)
+summary(lmer_child_mom_lg)
+### coef(lmer_child_mom_lg) 
+
+# plot moms' LD and kids' LD
+ggplot(fortify(lmer_child_mom_lg),aes(mtld.y, mtld.x, 
+                                 color = speaker_id)) +
+       stat_summary(aes(y = .fitted), fun.y = mean, geom = "line")
+
+ggplot(combine_month_mtld,aes(mtld.y,mtld.x,color = speaker_id))+
+  geom_point()+
+  geom_smooth(method = "gam")
+
+plot(lmer_child_mom_lg)
+```
+
+
+# Mixed-effect model II 
+```{r,message=F}
+# whether moms' LD extert different influences 
+# on the DEVELOPMENT of kids' LD
+## filter kids with more than 2 observations
+mtld_filter <- function(df) {
+  nmtld <- aggregate(child_data_mtld$mtld,
+  by = list(speaker_id = child_data_mtld$speaker_id),
+  length)
+  nchild <- nmtld$speaker_id[(nmtld$x > 2)]
+  df <- df %>%
+  filter(speaker_id %in% nchild) %>%
+  group_by(speaker_id)
+}
+
+# 78 kids 
+child_month_mtld <- mtld_filter(child_month_mtld)
+
+combine_month_mtld_dev <- child_month_mtld %>%
+  filter(speaker_id %in% mom_id) %>%
+  group_by(speaker_id) %>%
+  mutate(change = lag(mtld))
+
+combine_month_mtld_dev <-merge(x = combine_month_mtld_dev,
+  y = mom_month_mtld[, c("speaker_id", "age", "length", "mtld")],
+  by = c("speaker_id", "age"))
+
+combine_dev <- combine_month_mtld_dev[complete.cases(combine_month_mtld_dev),]
+
+lmer_dev <-
+  lmer(scale(mtld.x) ~ scale(change) + scale(mtld.y) - 1 + 
+         (1 + log(age) | speaker_id), combine_dev)
+
+summary(lmer_dev)
+```
+
+
+# Fixed effect model I 
+```{r,message=F}
+# whether different moms' LD yield different influence on kids' LD
+mu_mom <- mean(combine_month_mtld$mtld.y)
+sd_mom <- sd(combine_month_mtld$mtld.y)
+low <- mu_mom - 2 * sd_mom
+high <- mu_mom + 2 * sd_mom
+
+ggplot(combine_month_mtld,aes(mtld.y))+
+  geom_histogram(bins = 30)+
+  geom_vline(xintercept = low, color = "gold",size = 2)+
+  geom_vline(xintercept = high, color = "gold",size = 2)
+
+# sort moms into 3 groups based on LD levels
+mom_dif = cut(combine_dev$mtld.y,
+  breaks = c(14, low, high, 125),
+  label = c("low", "moderate", "high"))
+
+lm_mom_dif <-lm(scale(mtld.x) ~  mom_dif , combine_dev)
+summary(lm_mom_dif)
+```
+
+# Mixed effect model III 
+```{r,message=F}
+lmer_mom_dif <-lmer(scale(mtld.x) ~  mom_dif + (log(age) | speaker_id), combine_dev)
+summary(lmer_mom_dif)
+```
+
+# Fixed effect model II: Simple ARMA model 
+```{r,results= 'hide'}
+# we can get intercepts and slops for each kid
+lm_dev <- lm(mtld.x ~ change + (1+change) * factor(speaker_id) , combine_dev)
+summary(lm_dev)
+plot(lm_dev)
+```
+
+# Granger Causality model 
+```{r,message=F}
+# 1) filter kids with observations during 20~35 months 
+# 2) drop kids with more than 20% missing values 
+filter_id <- function(df){
+freq_age <- aggregate(df$mtld.x, by = list(age = df$age), length) 
+df <- df[which(df$age > 19 & df$age < 36),]
+df <- df[,c("speaker_id","age","mtld.x")]
+number <- aggregate(df$mtld.x, by = list(speaker_id = df$speaker_id), length)
+id <- number$speaker_id[which(number$x > (0.8 *16))]
+df <- df %>%
+  filter(speaker_id %in% id)
+}
+
+# get 14 kids in total
+filter_child <- filter_id(combine_month_mtld)
+id <- unique(filter_child$speaker_id) 
+
+#impute missing data
+wide_data <- function(df){
+df <- reshape(df , idvar = "age" , timevar = "speaker_id", direction = "wide")
+df <- df[order(df$age),]
+colnames(df) <- c("age",id)
+df
+}
+
+filter_child_wide <- wide_data(filter_child)
+```
+```{r,results = 'hide'}
+set.seed(500)
+md.pattern(filter_child_wide)
+impute_data <- mice(filter_child_wide,m=5,maxit=5,meth='pmm',seed=500)
+summary(impute_data)
+impute_data <- mice::complete(impute_data,1)
+
+# convert to long format
+long_data <- function(df){
+age <- df$age
+df <- gather(df, age, value, colnames(df[,2:15]), factor_key = TRUE)
+colnames(df) <- c("age","speaker_id","mtld")
+df
+}
+
+filter_child_impute <- long_data(filter_child_wide)
+
+# combine imputed child data with moms
+filter_combine <- merge(x = filter_child_impute,
+  y = combine_month_mtld[, c("speaker_id", "age", "mtld.y")],
+  by = c("speaker_id", "age"))
+```
+```{r,message=FALSE}
+# use Dickey-Fuller Test to check stationarity
+tseries::adf.test(filter_combine$mtld, alternative = "stationary", k=0)
+
+# Null: development of kids' LD is independent of change of moms' LD
+kid_lag <- diff(filter_combine$mtld)
+mom_mtld <- diff(filter_combine$mtld.y)
+# not enough evidence to reject the null
+lmtest::grangertest(kid_lag~mom_mtld, order = 2)
+
+```
+

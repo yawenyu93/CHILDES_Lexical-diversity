@@ -18,7 +18,8 @@ library(childesr)
 library(data.table)
 library(koRpus)
 library(tidyverse)
-load("~/Desktop/application/lexical diversity/trial 3/CHILDES_Lexical-diversity.RData")
+library(astsa)
+load("/Users/Yawen/Desktop/application/lexical diversity/trial_3_pre/CHILDES_Lexical-diversity.RData")
 
 #set language enviroment as english
 set.kRp.env(lang = "kRp.env", validate = TRUE)
@@ -31,7 +32,6 @@ get.kRp.env(lang = TRUE, errorIfUnset = TRUE)
 ```{r, message=FALSE,eval=FALSE}
 # get partipants information
 participants <- get_participants(role = "Target_child")
-
 
 # get utterances of all children 
 # convert age from days to months
@@ -93,14 +93,13 @@ child_data_collapsed <- child_data_binned %>%
   filter(corpus_id == corpus_id) %>%
   filter(speaker_id == speaker_id) %>%
   group_by(corpus_id, speaker_id, age_bin) %>%
-  summarise(gloss = paste0(gloss, collapse = " ")) 
+  summarise(gloss = paste0(gloss, collapse = " "))
+
 
 # only keep complete rows
-child_data_collapsed <- child_data_collapsed[complete.cases(child_data_collapsed),]
-
 # combine all gloss of each individual child at a certain age interval 
-child_data_tokenized <- child_data_collapsed %>%
-  split(paste0(.$corpus_id, "-", .$speaker_id, "-", .$age_bin)) 
+child_data_collapsed <- child_data_collapsed[complete.cases(child_data_collapsed),] %>%
+                        split(paste0(.$corpus_id, "-", .$speaker_id, "-", .$age_bin)) 
 
 ```
 
@@ -111,20 +110,20 @@ child_data_tokenized <- child_data_collapsed %>%
 # create a function to tokenize and measure diversity 
 # with Measure of Textual Lexical Diversity(MTLD) 
 tokenize_mtld <- function(df) {
-  tokenized_df <- koRpus::tokenize(df$gloss, format = "obj", lang = "en", tag = TRUE)
-  MTLD <- MTLD(tokenized_df)
-  mtld <- data_frame(mtld = MTLD@MTLD$MTLD)
-  length <- data_frame(length = MTLD@tt$num.tokens)
-  merge(x = length,y = mtld, by = NULL)
+  tokenized_df <- koRpus::tokenize(df$gloss, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+  MTLD <- MTLD(tokenized_df) #measure LD
+  mtld <- data_frame(mtld = MTLD@MTLD$MTLD) #get LD measurement
+  length <- data_frame(length = MTLD@tt$num.tokens)  #get length meaasurement
+  merge(x = length,y = mtld, by = NULL) #combine LD and lenghth values
 }
 
 # creat a function to measure diversity with Vocd-D
 tokenize_vocd <- function(df) {
-  tokenized_df <- koRpus::tokenize(df$gloss,format = "obj", lang = "en", tag = TRUE)
-  VOCD <- HDD(tokenized_df)
-  vocd <- data_frame(vocd =VOCD@HDD$HDD)
-  length <- data_frame(length = VOCD@tt$num.tokens)
-  merge(x = vocd, y = length)}
+  tokenized_df <- koRpus::tokenize(df$gloss,format = "obj", lang = "en", tag = TRUE) #tokenize texts
+  VOCD <- HDD(tokenized_df) #measure LD
+  vocd <- data_frame(vocd =VOCD@HDD$HDD) #get LD measurement
+  length <- data_frame(length = VOCD@tt$num.tokens) #get length meaasurement
+  merge(x = vocd, y = length)} #combine LD and lenghth values
   
 
 # combine children's information and measurement values
@@ -135,27 +134,24 @@ child_data_mtld <- map(child_data_tokenized, tokenize_mtld)%>%
   mutate(corpus_id = as.integer(corpus_id),
          speaker_id = as.integer(speaker_id)) %>%
   filter(!mtld == as.numeric("inf")) %>%
-  filter(!length < 100) 
+  filter(!length < 100) %>%
+  mutate(age_bin = factor(age_bin, levels = levels(child_data_binned$age_bin))) 
+
 
 child_data_vocd <- map(child_data_tokenized, tokenize_vocd)%>% 
   bind_rows(.id = "id") %>%
   separate(col = id, into = c("corpus_id", "speaker_id", "age_bin"), sep = "-") %>%
   mutate(corpus_id = as.integer(corpus_id),
          speaker_id = as.integer(speaker_id)) %>%
-  filter(!length < 100) 
-
-
-child_data_mtld <- child_data_mtld %>%
-  mutate(age_bin = factor(age_bin, levels = levels(child_data_binned$age_bin))) 
-
-child_data_vocd <- child_data_vocd %>%
+  filter(!length < 100) %>%
   mutate(age_bin = factor(age_bin, levels = levels(child_data_binned$age_bin)))
+
 
 # filter kids' records who have more than one measurement 
 # so that we could know their development over time
 mtld_filter <- function(df){
   nmtld <- aggregate(child_data_mtld$mtld, by = list(speaker_id = child_data_mtld$speaker_id), length)
-  nchild <- nmtld$speaker_id[(nmtld$x != 1)]
+  nchild <- nmtld$speaker_id[(nmtld$x != 1 )]
   df <- df %>%
   filter(speaker_id %in% nchild)%>%
   group_by(speaker_id)
@@ -180,21 +176,17 @@ child_id_vocd <- unique(child_vocd_dev$speaker_id)
 ############################### Measure by months ##############################
 # MTLD has an advantage of measuring texts subsequtially
 # so let's measure every month data that is usually one coherent session
-child_month_binned <- child_data_clean_age %>%
-  mutate(age = round(speaker_age))
-
-
-child_month_collapsed <- child_month_binned %>%
+child_month_collapsed <- child_data_clean_age %>%
+  mutate(age = round(speaker_age))%>%
   filter(corpus_id == corpus_id) %>%
   filter(speaker_id == speaker_id) %>%
   group_by(corpus_id, speaker_id, age) %>%
   summarise(gloss = paste0(gloss, collapse = " ")) 
 
-child_month_collapsed <- child_month_collapsed[complete.cases(child_month_collapsed),]
+child_month_tokenized <- child_month_collapsed[complete.cases(child_month_collapsed),]%>%
+                        split(paste0(.$corpus_id, "-", .$speaker_id, "-", .$age)) 
 
-child_month_tokenized <- child_month_collapsed %>%
-  split(paste0(.$corpus_id, "-", .$speaker_id, "-", .$age)) 
-
+# measure MTLD and remove unreliable results (tokens<100)
 child_month_mtld <- map(child_month_tokenized, tokenize_mtld)%>% 
   bind_rows(.id = "id") %>%
   separate(col = id, into = c("corpus_id", "speaker_id", "age"), sep = "-") %>%
@@ -220,7 +212,7 @@ mom_data <- get_utterances(role = "Mother") %>%
   mutate(target_child_age = target_child_age / 30.5)
 
 # remove unintelligible utterances
-# only keep the records of moms who can be identified
+# only keep the records of moms who can be paired with children by id 
 mom_data_clean <- mom_data %>%
   filter(!gloss %in% murmur) %>%
   mutate(gloss = removeWords(gloss, murmur),
@@ -239,10 +231,8 @@ mom_data_collapsed <- mom_data_binned %>%
   group_by(corpus_id, target_child_id, age_bin) %>%
   summarise(gloss = paste0(gloss, collapse = " ")) 
 
-mom_data_collapsed <- mom_data_collapsed[complete.cases(mom_data_collapsed),]
-  
-mom_data_tokenized <- mom_data_collapsed %>%
-  split(paste0(.$corpus_id, "-", .$target_child_id, "-", .$age_bin)) 
+mom_data_collapsed <- mom_data_collapsed[complete.cases(mom_data_collapsed),]%>%
+                      split(paste0(.$corpus_id, "-", .$target_child_id, "-", .$age_bin)) 
 
 # measure moms' LD by 6 months
 ## by MTLD
@@ -268,19 +258,15 @@ mom_month_binned <- mom_data_clean %>%
   breaks = seq(min_age, max_age, 1),ordered_result = TRUE))
 
 # measure moms' MTLD by month 
-mom_month_binned <- mom_data_clean %>%
-  mutate(age = round(target_child_age))
-
-mom_month_collapsed <- mom_month_binned %>%
+mom_month_collapsed <- mom_data_clean  %>%
+  mutate(age = round(target_child_age)) %>%
   filter(corpus_id == corpus_id) %>%
   filter(target_child_id == target_child_id) %>%
   group_by(corpus_id, target_child_id, age) %>%
   summarise(gloss = paste0(gloss, collapse = " ")) 
 
-mom_month_collapsed <- mom_month_collapsed[complete.cases(mom_month_collapsed),]
-  
-mom_month_tokenized <- mom_month_collapsed %>%
-  split(paste0(.$corpus_id, "-", .$target_child_id, "-", .$age)) 
+mom_month_collapsed <- mom_month_collapsed[complete.cases(mom_month_collapsed),] %>%
+                       split(paste0(.$corpus_id, "-", .$target_child_id, "-", .$age)) 
 
 mom_month_mtld <- map(mom_month_tokenized,tokenize_mtld)%>% 
   bind_rows(.id = "id") %>%
@@ -318,7 +304,7 @@ ggplot(child_month_mtld, aes(x = age, y = mtld,
   group = age)) +
   geom_boxplot(outlier.size = 0.5) +
   geom_smooth(method = loess, se = FALSE) +
-  xlim(3, 147) +
+  xlim(3, 50) +
   theme_classic() +
   labs(title = "MTLD: Childrens' Lexical Diversity by Month", subtitle = "3 ~ 147 Months")
 
@@ -328,7 +314,7 @@ ggplot(child_month_mtld, aes(x = age, y = mtld,
 * Plot Moms' LD 
 
 ```{r, message=FALSE}
-# MTLD results show greater disparity among moms than Vocd_D, which is very puzzling
+# MTLD results show greater disparity among moms than Vocd_D
 mean_mtld_mom <- mean(mom_data_mtld$mtld)
 mean_vocd_mom <- mean(mom_data_vocd$vocd)
 mean_mtld_mom_month<- mean(mom_month_mtld$mtld)
@@ -364,72 +350,7 @@ ggplot(mom_month_mtld,aes(x=age,y=mtld,
                           group = age))+
       geom_boxplot(outlier.size = 0.5)+
       xlim(0,150)+
-      labs(title = " MTLD: Moms' Lexical Diversity of Mothers by Month")+
+      labs(title = " MTLD: Moms' Lexical Diversity of Mothers by Month",subtitle = "3 ~ 65 Months")+
       theme_classic()
 ```
 
-
-
-* Any relation between mothers' LD with their children's LD? 
-
-```{r, message=FALSE}
-## combine data of moms and their children, 134 in total
-mom_id <- unique(mom_month_mtld$target_child_id)
-combine_month_mtld <- child_month_mtld %>%
-  filter(speaker_id %in% mom_id) 
-
-combine_month_mtld <-
-  merge(x = combine_month_mtld,
-  y = mom_month_mtld[, c("speaker_id", "age", "length", "mtld")],
-  by = c("speaker_id", "age"))
-
-## look at change of children's LD
-combine_month_mtld_dif <- child_month_mtld %>%
-  filter(speaker_id %in% mom_id) %>%
-  group_by(speaker_id) %>%
-  mutate(change = lag(mtld))
-
-combine_month_mtld_dif <-
-  merge(x = combine_month_mtld_dif,
-  y = mom_month_mtld[, c("speaker_id", "age", "length", "mtld")],
-  by = c("speaker_id", "age"))
-
-
-# linear regression
-# only children's and mothers' MTLD
-lm_child_mom <- lm(mtld.x ~ mtld.y, combine_month_mtld)
-summary(lm_child_mom)
-
-
-# add another variable log(age)
-lm_child_mom_lg <-lm(mtld.x ~ mtld.y + log(age),combine_month_mtld)
-summary(lm_child_mom_lg)
-plot(fitted(lm_child_mom_lg), residuals(lm_child_mom_lg))
-
-
-# children's development and mothers' MTLD
-lm_child_mom_dif <- lm(change ~ mtld.y, combine_month_mtld_dif)
-summary(lm_child_mom_dif)
-
-
-# moms' and children's LD at 24 months
-## 69 kids
-combine_child_mom_24 <- combine_month_mtld[which(combine_month_mtld$age == 24),]
-lm_child_mom_24 <- lm(mtld.x ~ mtld.y, combine_child_mom_24)
-summary(lm_child_mom_24)
-plot(fitted(lm_child_mom_24), residuals(lm_child_mom_24))
-
-
-# moms' and children's LD at 30 months
-## 65 kids
-combine_child_mom_30 <- combine_month_mtld[which(combine_month_mtld$age == 30),]
-lm_child_mom_30 <- lm(mtld.x ~ mtld.y, combine_child_mom_30)
-summary(lm_child_mom_30)
-plot(fitted(lm_child_mom_30), residuals(lm_child_mom_30))
-
-
-#MTLD measurement associates with utterance length
-## need to control for length
-summary(lm(mtld.x ~ length.x,combine_month_mtld))
-
-```
