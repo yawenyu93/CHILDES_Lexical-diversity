@@ -21,24 +21,77 @@ options(xtable.comment=FALSE)
 library(mice)
 library(tidyverse)
 library(lme4)
+library(tseries)
+library(forecast)
 load("~/Desktop/application/lexical diversity/trial_3_pre/CHILDES_Lexical-diversity.RData")
 ```
 
-
+* Prepare dataset 
 ```{r}
-## combine data of moms and their children, 134 in total
-mom_id <- unique(mom_month_mtld$target_child_id)
-combine_month_mtld <- child_month_mtld %>%
-  filter(speaker_id %in% mom_id) 
+# filter kids with more than 2 observations
+mtld_filter <- function(df) {
+  nmtld <- aggregate(child_data_mtld$mtld,
+  by = list(speaker_id = child_data_mtld$speaker_id),
+  length)
+  nchild <- nmtld$speaker_id[(nmtld$x > 2)]
+  df <- df %>%
+  filter(speaker_id %in% nchild) %>%
+  group_by(speaker_id)
+}
 
-combine_month_mtld <- child_month_mtld %>%
-                      filter(speaker_id %in% mom_id) %>%
-                      left_join(x=mom_month_mtld[, c("speaker_id", "age", "length", "mtld")],
-                                by = c("speaker_id", "age"))
+child_month_dev <- mtld_filter(child_month_mtld)
+
+# combine mom and child data
+combine_month_dev <- child_month_dev %>%
+  filter(speaker_id %in% mom_id) %>%
+  group_by(speaker_id) %>%
+  rename(mtld.x = mtld,
+         length.x = length) %>%
+  left_join(select(mom_month_mtld, -target_child_id)) %>%
+  rename(mtld.y = mtld,
+         length.y = length) %>%
+  group_by(corpus_id, speaker_id) %>%
+  arrange(corpus_id, speaker_id, age) 
+
+# keep complete records
+combine_month_dev <- combine_month_dev[complete.cases(combine_month_dev),]
+#check redisual plot
+test_model <- lm(mtld.y ~ log(age),combine_month_dev)
+plot(test_model) 
+
+# filter kids with more than 5 observations
+mtld_filter <- function(df) {
+  nmtld <- aggregate(child_data_mtld$mtld,
+  by = list(speaker_id = child_data_mtld$speaker_id),
+  length)
+  nchild <- nmtld$speaker_id[(nmtld$x > 5)]
+  df <- df %>%
+  filter(speaker_id %in% nchild) %>%
+  group_by(speaker_id)
+}
+
+combine_month_dev5 <- mtld_filter(combine_month_dev)
+
+# data transformation and get lagged data (up to 5 months)
+combine_month_trans <- combine_month_dev5 %>%
+  mutate(mtld.y = log2(mtld.y),
+         mtld.x = sqrt(mtld.x),
+         lag.x = lag(mtld.x),
+         lag.y = lag(mtld.y),
+         lag.x2 = lag(mtld.x, n=2),
+         lag.y2 = lag(mtld.y, n=2),
+         lag.x3 = lag(mtld.x,n=3),  
+         lag.y3 = lag(mtld.y, n= 3),
+         lag.x4 = lag(mtld.x,n=4),  
+         lag.y4 = lag(mtld.y,n=4),
+         lag.x5 = lag(mtld.x,n=5),
+         lag.y5 = lag(mtld.y, n=5))
+```
 
 
-# linear regression
-# children's LD versus mothers' LD
+* Examine correlation between moms' LD and children's LD (not control for age)
+```{r}
+# Simple model: children's LD versus mothers' LD
 lm_child_mom <- lm(mtld.x ~ mtld.y, combine_month_mtld)
 summary(lm_child_mom)
 
@@ -48,8 +101,8 @@ summary(lm_child_mom_lg)
 plot(fitted(lm_child_mom_lg), residuals(lm_child_mom_lg))
 
 
-# Correlation is always significant in a large dataset 
-# only look at moms' and children's LD at 24 months (69 kids)
+# Since correlation is always significant in a large dataset 
+# let's look at moms' and children's LD at 24 months (69 kids)
 combine_child_mom_24 <- combine_month_mtld[which(combine_month_mtld$age == 24),]
 lm_child_mom_24 <- lm(mtld.x ~ mtld.y, combine_child_mom_24)
 summary(lm_child_mom_24)
@@ -67,8 +120,9 @@ ggplot(combine_month_mtld,aes(mtld.y,mtld.x,color = speaker_id))+
   theme_classic()
 
 # Results: All of models above show significant correlation between moms' LD and children's LD
-# Next step: To examnine this correlation by controlling for age variable
+# Next step: To examnine this correlation by controlling for age 
 ```
+
 
 * Granger Causality model 
 ```{r,message=F}
@@ -134,12 +188,19 @@ lmtest::grangertest(kid_lag~mom_mtld, order = 2)
 ```
 
 
-* Mixed-effect model I: cocurrent correlation between moms and children 
+* Examine cocurrent correlations bwteen moms and children
 ```{r,message=F}
+# Take age as fixed effect and moms' LD as random effect
+lmer_lg <-
+  lmer(scale(mtld.x) ~ log(age) + (scale(mtld.y)|speaker_id), 
+       data = combine_month_trans) # scale the MTLD values since kids normally have slighly lower LD
+summary(lmer_lg)
+
+# Take moms' LD as fixed effect and age as random effect
 lmer_child_mom_lg <-
-  lmer(scale(mtld.x) ~ scale(mtld.y) -1  + log(age) + 
-         (1 + log(age) | speaker_id),
-          combine_month_mtld) # scale the MTLD values since kids normally have slighly lower LD
+  lmer(scale(mtld.x) ~ scale(mtld.y) - 1  + log(age) +
+  (1 + log(age) | speaker_id),
+  combine_month_mtld) 
 
 summary(lmer_child_mom_lg)
 
@@ -149,7 +210,8 @@ ggplot(fortify(lmer_child_mom_lg),aes(mtld.y, mtld.x,
 
 ```
 
-* Fixed effect model I: whether moms with low/moderate/high LD yield different influences 
+
+* Examine influences of moms with low/moderate/high LD 
 ```{r,message=F}
 # group moms according to LD levels (low/moderate/high)
 mu_mom <- mean(combine_month_dev$mtld.y,na.rm=TRUE)
@@ -170,104 +232,101 @@ mom_dif = cut(combine_month_dev$mtld.y,
 lm_mom_dif <-lm(mtld.x ~  mom_dif , combine_month_dev)
 summary(lm_mom_dif)
 
-```
-
-
-* Mixed effect model II: whether moms with low/moderate/high LD yield different influences 
-```{r,message=F}
 lmer_mom_dif <-lmer((mtld.x - lag.x) ~  mom_dif + (1 | speaker_id), combine_month_dev)
 summary(lmer_mom_dif)
 
-# add age variable
+# add age variable as one fixed effect
 lmer_dif_age <- lmer((mtld.x - lag.x) ~   mom_dif + log(age) + 
                        (1 | speaker_id), combine_month_dev)
 summary(lmer_dif_age)
 ```
 
 
-* Fixed effect model II: Simple ARMA model 
+* ARMA model
 ```{r,results= 'hide'}
-# get intercepts and slops for individual child
-lm_dev <- lm(mtld.x ~ lag.x + (1+lag.x) * factor(speaker_id) , data = combine_month_dev)
+# build simple ARMA model using lm
+lm_dev <- lm(mtld.x ~ lag.x + (1+lag.x) * factor(speaker_id) , data = combine_month_trans)
 summary(lm_dev)
+
+# fit ARMA model
+# check stationarity
+adf.test(combine_month_trans$mtld.x) #p-value<0.05
+# autocorrelation plot: shows spikes at lags 1 and 2
+acf(combine_month_trans$mtld.x)
+pacf(combine_month_trans$mtld.x)
+# choose ARMA model for lag=1
+model_d1 <-diff(combine_month_trans$mtld.x, differences = 1)
+plot(model_d1)
+adf.test(model_d1)
+acf(model_d1) #shows spikes at lag 1,2
+pacf(model_d1) 
+auto.arima(model_d1, seasonal = FALSE)
+# choose ARMA model for lag=2
+model_d2 <-diff(combine_month_trans$mtld.x, differences = 2)
+plot(model_d2)
+adf.test(model_d2)
+acf(model_d2)
+pacf(model_d2) 
+auto.arima(model_d2, seasonal = FALSE)
+# Note: by comparison, we can better predict mtld.x with first ARMA model when lag=1
 ```
 
 
-* Mixed-effect model III: whether different moms extert different influences on the DEVELOPMENT of kids' LD 
+* Examine correlations between moms' changing slope and kids' LD 
 ```{r,message=F}
-# filter kids with more than 2 observations
-mtld_filter <- function(df) {
-  nmtld <- aggregate(child_data_mtld$mtld,
-  by = list(speaker_id = child_data_mtld$speaker_id),
-  length)
-  nchild <- nmtld$speaker_id[(nmtld$x > 5)]
-  df <- df %>%
-  filter(speaker_id %in% nchild) %>%
-  group_by(speaker_id)
+###### 1) model: moms' slope over time Vs. kids' LD over time
+# get growth slope (long-term) for each kid
+kid_slope <-lmer(mtld.x ~ (age | speaker_id), data = combine_month_trans)
+
+kid_growth <- data.frame(coef(kid_slope)$speaker_id) %>%
+  mutate(speaker_id = child_id) %>%
+  select(speaker_id,X.Intercept.,age) 
+
+# get changing slope (long-term) for each mom
+mom_slope <- lmer(mtld.y ~ (age | speaker_id), data = combine_month_trans)
+
+combine_growth <- data.frame(coef(mom_slope)$speaker_id) %>%
+  mutate(speaker_id = child_id) %>%
+  select(speaker_id,X.Intercept.,age)%>%
+  left_join(kid_growth, by = "speaker_id")
+
+# no significant correlation bewteen moms' and children's slope
+summary(lm(age.x ~ age.y, data=combine_growth))
+
+
+####### 2) model: mom's slope at month [t-4,t] Vs.kid's LD at month t
+#temp: build model based on one kid & mom (age:27~69)
+one <- combine_month_trans %>%
+  filter(speaker_id == "532")
+
+# get changing slope over time 
+one_slope <- data.frame(age = one$age, mtld.x = one$mtld.x,slope.y = NA)
+
+for(i in (4:nrow(one))){
+  mom_lag <- data.frame(age = one[1:i,"age"], mtld.y = one[1:i,"mtld.y"], mtld.x = one$mtld.x[[i]]) 
+  one_slope[i,"slope.y"] <- coef(lm(mtld.y ~ age, mom_lag))[[2]]
 }
 
-child_month_dev <- mtld_filter(child_month_mtld)
+# highly negative correlation
+summary(lm(mtld.x ~ slope.y, one_slope))
 
-# combine mom and child data
-combine_month_dev <- child_month_dev %>%
-  filter(speaker_id %in% mom_id) %>%
-  group_by(speaker_id) %>%
-  rename(mtld.x = mtld,
-         length.x = length) %>%
-  left_join(select(mom_month_mtld, -target_child_id)) %>%
-  rename(mtld.y = mtld,
-         length.y = length) %>%
-  group_by(corpus_id, speaker_id) %>%
-  arrange(corpus_id, speaker_id, age) 
-
-test_model <- lm(mtld.y ~ log(age),combine_month_dev)
-plot(test_model) #check redisual plot
-
-# data transformation 
-combine_month_trans <- combine_month_dev %>%
-  mutate(mtld.y = log2(mtld.y),
-         mtld.x = sqrt(mtld.x),
-         lag.x = lag(mtld.x),
-         lag.y = lag(mtld.y),
-         lag.x2 = lag(mtld.x, n=2),
-         lag.y2 = lag(mtld.y, n=2),
-         lag.x3 = lag(mtld.x,n=3),  
-         lag.y3 = lag(mtld.y, n= 3),
-         lag.x4 = lag(mtld.x,n=4),  
-         lag.y4 = lag(mtld.y,n=4),
-         lag.x5 = lag(mtld.x,n=5),
-         lag.y5 = lag(mtld.y, n=5))
-
-
-
-# 
-lm_lg <- lm(scale(mtld.x) ~ log(age) + scale(lag.x) + scale(mtld.y), data = combine_month_trans)
-summary(lm_lg)
-
-lm_mom_lag <- lm(mtld.x ~ lag.y5 + (1+lag.y5) * factor(speaker_id), data = combine_month_dev)
-summary(lm_mom_lag)
-
-
-
-# get moms' growth slope
-
-lm_mom <- lm(mtld.y ~  (1+lag.y5) * factor(speaker_id), combine_month_dev5)
-summary(lm_mom)
-
-mom_slope <- data_frame(slope = lm_mom$coefficients) 
-row <- c(2,29:54) 
-
-mom_slope <- subset(mom_slope, rownames(mom_slope) %in% row)
-baseline = as.numeric(mom_slope[1,])
-mom_slope[c(2:27),] = mom_slope[c(2:27),] + baseline 
-mom_slope$speaker_id <- child_num
-
+####### 3) apply the model to 27 children
+child_id <- unique(combine_month_trans$speaker_id)
+combine_slope <- data.frame()
             
-              
-lmer_dev <-
-  lmer(scale(mtld.x) ~ scale(lag.x) * log(age) + scale(lag.y5)  + (1 | speaker_id), combine_month_dev)
-summary(lmer_dev)
+for(i in (1:length(child_id))){
+  one_kid <- combine_month_trans[,c("speaker_id","age","mtld.x","mtld.y")]%>%
+    mutate(slope.y = NA)%>%
+    filter(speaker_id == child_id[[i]])
+  for(t in (4:nrow(one_kid))){
+  one_mom <- data.frame(age = one_kid[1:t,"age"], mtld.y = one_kid[1:t,"mtld.y"], mtld.x = one_kid$mtld.x[[t]]) 
+  one_kid[t,"slope.y"] <- coef(lm(mtld.y ~ age, one_mom))[[2]]
+  }
+  combine_slope <- bind_rows(combine_slope, one_kid)
+}
 
+# highly negative correlation
+summary(lm(mtld.x ~ slope.y, combine_slope))
 
 ```
 
