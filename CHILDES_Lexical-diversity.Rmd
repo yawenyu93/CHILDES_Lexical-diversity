@@ -76,11 +76,11 @@ ggplot(child_data_clean_age, aes(x = age)) +
 min_age <- floor(min(child_data_clean_age$age))
 max_age <- floor(max(child_data_clean_age$age))
 
-# add a new column grouping every 6 months data of each kid
+# group every 6 months data for each kid
 child_data_binned <- child_data_clean_age %>%
   mutate(age_bin = cut(age, breaks = seq(min_age, max_age, 6), ordered_result = TRUE))
 
-# use corpus_id and speaker_id to distinguish individual child
+# use corpus_id and speaker_id to identify individual child
 corpus_id <- participants %>%
   distinct(corpus_id) %>%
   pull(corpus_id)
