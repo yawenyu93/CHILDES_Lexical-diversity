@@ -13,11 +13,11 @@ toc_float: no
 ---
 
 
-```{r, global chunck options, include=FALSE}
+```{r, global chunck options, include=FALSE,eval=FALSE}
 knitr::opts_chunk$set(message=FALSE, results='markup',warning =  FALSE)
 options(xtable.comment=FALSE)
 ```
-```{r, setup, echo=FALSE, warning=FALSE}
+```{r, setup, eval=FALSE, warning=FALSE}
 library(mice)
 library(tidyverse)
 library(lme4)
@@ -26,7 +26,7 @@ library(forecast)
 load("~/Desktop/application/lexical diversity/trial_3_pre/CHILDES_Lexical-diversity.RData")
 ```
 
-* Prepare dataset 
+## Prepare data
 ```{r}
 # filter kids with more than 2 observations
 mtld_filter <- function(df) {
@@ -89,7 +89,8 @@ combine_month_trans <- combine_month_dev5 %>%
 ```
 
 
-* Examine correlation between moms' LD and children's LD (not control for age)
+## Examine correlation between moms' LD and children's LD 
+* not control for age 
 ```{r}
 # Simple model: children's LD versus mothers' LD
 lm_child_mom <- lm(mtld.x ~ mtld.y, combine_month_mtld)
@@ -124,7 +125,7 @@ ggplot(combine_month_mtld,aes(mtld.y,mtld.x,color = speaker_id))+
 ```
 
 
-* Granger Causality model 
+## Granger Causality model 
 ```{r,message=F}
 # 1) filter kids with observations during 20~35 months 
 # 2) drop kids with more than 20% missing values 
@@ -151,8 +152,7 @@ df
 }
 
 filter_child_wide <- wide_data(filter_child)
-```
-```{r,results = 'hide'}
+
 set.seed(500)
 md.pattern(filter_child_wide)
 impute_data <- mice(filter_child_wide,m=5,maxit=5,meth='pmm',seed=500)
@@ -173,8 +173,7 @@ filter_child_impute <- long_data(filter_child_wide)
 filter_combine <- merge(x = filter_child_impute,
   y = combine_month_mtld[, c("speaker_id", "age", "mtld.y")],
   by = c("speaker_id", "age"))
-```
-```{r,message=FALSE}
+
 # 4) use Dickey-Fuller Test to check stationarity
 tseries::adf.test(filter_combine$mtld, alternative = "stationary", k=0) # p-value < 0.05 indicates it is stationary
 
@@ -188,7 +187,7 @@ lmtest::grangertest(kid_lag~mom_mtld, order = 2)
 ```
 
 
-* Examine cocurrent correlations bwteen moms and children
+## Examine cocurrent correlations bwteen moms and children
 ```{r,message=F}
 # Take age as fixed effect and moms' LD as random effect
 lmer_lg <-
@@ -211,7 +210,7 @@ ggplot(fortify(lmer_child_mom_lg),aes(mtld.y, mtld.x,
 ```
 
 
-* Examine influences of moms with low/moderate/high LD 
+## Examine influences of moms with low/moderate/high LD 
 ```{r,message=F}
 # group moms according to LD levels (low/moderate/high)
 mu_mom <- mean(combine_month_dev$mtld.y,na.rm=TRUE)
@@ -242,7 +241,7 @@ summary(lmer_dif_age)
 ```
 
 
-* ARMA model
+## ARMA model
 ```{r,results= 'hide'}
 # build simple ARMA model using lm
 lm_dev <- lm(mtld.x ~ lag.x + (1+lag.x) * factor(speaker_id) , data = combine_month_trans)
@@ -251,9 +250,11 @@ summary(lm_dev)
 # fit ARMA model
 # check stationarity
 adf.test(combine_month_trans$mtld.x) #p-value<0.05
+
 # autocorrelation plot: shows spikes at lags 1 and 2
 acf(combine_month_trans$mtld.x)
 pacf(combine_month_trans$mtld.x)
+
 # choose ARMA model for lag=1
 model_d1 <-diff(combine_month_trans$mtld.x, differences = 1)
 plot(model_d1)
@@ -261,6 +262,7 @@ adf.test(model_d1)
 acf(model_d1) #shows spikes at lag 1,2
 pacf(model_d1) 
 auto.arima(model_d1, seasonal = FALSE)
+
 # choose ARMA model for lag=2
 model_d2 <-diff(combine_month_trans$mtld.x, differences = 2)
 plot(model_d2)
@@ -268,13 +270,14 @@ adf.test(model_d2)
 acf(model_d2)
 pacf(model_d2) 
 auto.arima(model_d2, seasonal = FALSE)
+
 # Note: by comparison, we can better predict mtld.x with first ARMA model when lag=1
 ```
 
 
-* Examine correlations between moms' changing slope and kids' LD 
+## Examine correlations between moms' changing slope and kids' LD 
 ```{r,message=F}
-###### 1) model: moms' slope over time Vs. kids' LD over time
+###### 1) model: moms' slope over time Vs. kids' LD over time #####
 # get growth slope (long-term) for each kid
 kid_slope <-lmer(mtld.x ~ (age | speaker_id), data = combine_month_trans)
 
@@ -294,7 +297,7 @@ combine_growth <- data.frame(coef(mom_slope)$speaker_id) %>%
 summary(lm(age.x ~ age.y, data=combine_growth))
 
 
-####### 2) model: mom's slope at month [t-4,t] Vs.kid's LD at month t
+####### 2) model: mom's slope at month [t-4,t] Vs.kid's LD at month t ###
 #temp: build model based on one kid & mom (age:27~69)
 one <- combine_month_trans %>%
   filter(speaker_id == "532")
@@ -310,7 +313,7 @@ for(i in (4:nrow(one))){
 # highly negative correlation
 summary(lm(mtld.x ~ slope.y, one_slope))
 
-####### 3) apply the model to 27 children
+####### 3) apply the model to 27 children #####
 child_id <- unique(combine_month_trans$speaker_id)
 combine_slope <- data.frame()
             
