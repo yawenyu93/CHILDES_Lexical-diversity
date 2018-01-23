@@ -132,8 +132,8 @@ recode_combine <- recode_data %>%
   merge(x = kid_effects, by=c("subject")) %>%
   merge(x = mom_ld, by = c("subject","session","age")) %>%
   group_by(subject)  %>%
-  mutate(mom_lag = lag(mtld.x, n=4),
-         kid_lag = lag(mtld.y, n=4)) %>%
+  mutate(mom_lag = lag(mtld.x, n=6),
+         kid_lag = lag(mtld.y, n=6)) %>%
   rename(mom_mean = mean, 
          mom_slope = slope,
          kid_mtld = mtld.y,
@@ -143,8 +143,8 @@ recode_combine <- recode_data %>%
 
 # plot MTLD growth with age
 ggplot()+
-  geom_smooth(aes(x=age, y=mtld.x, colour = "mother"), data = recode_combine)+
-  geom_smooth(aes(x=age, y=mtld.y, colour = "children"), data = recode_combine)+
+  geom_smooth(aes(x=age, y=mom_mtld, colour = "mother"), data = recode_combine)+
+  geom_smooth(aes(x=age, y=kid_mtld, colour = "children"), data = recode_combine)+
     labs(title = "Childrens' and Mothers' Lexical Diversity Growth", subtitle = "0 ~ 300 Months") +
   theme_classic() +
   ylab("Lexical Diversity")+
@@ -205,7 +205,7 @@ anova(simple_model2, mean_model) # mom's mean LD
   
 slope_model <-
   lm(mean_age_intercept ~ mom_mean + mom_slope, data = recode_combine)
-anova(mean_model, slope_model) # kid's slope
+anova(mean_model, slope_model) # slope of kid's LD
   
 slope_kid_model <-
   lm(mean_age_intercept ~ mom_mean + mom_slope + kid_slope, data = recode_combine)
@@ -228,14 +228,14 @@ summary(Model2)
 #### by mom's speech and length of kids' utterances
 
 
-# test lagged correlation (n=4)
+# test lagged correlation (n=6)
 lag_model <- lm(mom_mtld ~ log(age) + kid_lag, data = recode_combine)
 lag_model2 <- lm(kid_mtld ~ log(age) + mom_lag, data = recode_combine)
 summary(lag_model)
 summary(lag_model2)
-#### Finding: mother's speech better predict variations of children's speech in 4 months 
-
+#### Finding: mother's speech better predict variations of children's speech in 6 months 
 ```
+
 
 ## Correlation of mother's speech and kid's LD
 ```{r, message=FALSE}
@@ -246,24 +246,25 @@ time_table <- time_table[order(time_table)]
 
 recode_age_combine <- mom_slope %>%
   rename(mom_mean = mean, mom_slope = slope)
-  
+
+# recode time  
 for(i in (1:68)){
 recode_data <- combine_data %>%
   mutate(recode_age = log(age) - log(time_table[i]))
 
-recode_age_model <- lmer(mtld ~ recode_age + (recode_age|subject), data = recode_data)
-fixed_effects <- fixef(recode_age_model) 
-kid_effects <- as_data_frame(ranef(recode_age_model)$subject) 
+recode_all_model <- lmer(mtld ~ recode_age + (recode_age|subject), data = recode_data)
+all_fixed <- fixef(recode_all_model) 
+all_effects <- as_data_frame(ranef(recode_all_model)$subject) 
 
 drop <- c("(Intercept)","recode_age")
-kid_effects <-  kid_effects %>%
-  mutate(subject = rownames(kid_effects),
-         age = `(Intercept)` + fixed_effects[1]) %>%
+all_effects <-  all_effects %>%
+  mutate(subject = rownames(all_effects),
+         age = `(Intercept)` + all_fixed[1]) %>%
   select(-one_of(drop))
 
-colnames(kid_effects)[[2]] <- paste(names(kid_effects)[[2]], c(time_table[[i]]),sep = "")
+colnames(all_effects)[[2]] <- paste(names(all_effects)[[2]], c(time_table[[i]]),sep = "")
 
-recode_age_combine <- merge(x = recode_age_combine, y = kid_effects, by = c("subject"))} 
+recode_age_combine <- merge(x = recode_age_combine, y = all_effects, by = c("subject"))} 
 
 
 # examine correlation with moms' mean and slope
@@ -296,19 +297,19 @@ cor_slope_data <- cor_slope_data %>%
 
 # CI plot of correlation
 ggplot() + 
-  geom_errorbar(data=cor_mean_data, mapping=aes(x=age, ymin=lower, ymax=upper), width=1, size=2, color="navy")+
+  geom_errorbar(data=cor_mean_data, mapping=aes(x=age, ymin=lower, ymax=upper), width=0.5, size=1, color="navy")+
   geom_point(data=cor_mean_data, mapping=aes(x=age, y=mean), size=1, shape=21, fill="white") +
   theme_classic() +
   ylab("Relationship of Child's LD to Mother's Mean LD") +
-  xlab("Recoded Age (month) as Initial Session")
+  xlab("Recoded Age (month) as Initial Session") 
 
 
 ggplot() + 
-  geom_errorbar(data=cor_slope_data, mapping=aes(x=age, ymin=lower, ymax=upper), width=1, size=2, color="navy")+ 
+  geom_errorbar(data=cor_slope_data, mapping=aes(x=age, ymin=lower, ymax=upper), width=0.5, size=1, color="navy")+
   geom_point(data=cor_slope_data, mapping=aes(x=age, y=slope), size=1, shape=21, fill="white") +
   theme_classic() + 
   ylab("Relationship of Child's LD to Mother's LD Slope") +
   xlab("Recoded Age (month) as Initial Session") 
-#### Finding: the predictive relationship between mother's speech and kid's  LD 
-#### increases steadily, so does variation
+#### Finding: the predictive relationship between mother's speech and kid's LD 
+#### increases steadily with age, so does variation
 ```
