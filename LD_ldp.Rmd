@@ -4,312 +4,394 @@ author: 'Yawen Yu and Dan Yurovsky'
 date: "12/5/2017"
 output: pdf_document
 ---
-## Clean Data
+# Load Data & Clean Data
+```{r, load data, message=FALSE, echo=TRUE}
+library(koRpus)
+library(tidyverse)
+library(tm)
+library(lme4)
+library(dplyr)
+
+# Read in LDP data
+ldp <- src_sqlite("~/Documents/ldp.db")
+
+tbl(ldp,"subjects")
+
+# Get all utterances
+utter <- tbl(ldp, "utterances") %>%
+  collect() 
+
+# Get all participants
+subjs <- tbl(ldp, "subjects") %>%
+  collect() %>%
+  rename(subject = id)
+
+# Get visit data
+visits <- tbl(ldp, "visits") %>%
+  collect() %>%
+  select(subject, session, date, child_age, child_age_years, child_age_months,
+         income)
+
+
+# Get measures data
+measures <- tbl(ldp, "measures") %>%
+  collect() %>%
+  select(-last_update) %>%
+  left_join(y=visits, by = c("subject", "session")) %>%
+  mutate(ttr = word_types/word_tokens) 
+```
+
+## Clean utterance data
 ```{r, clean data, results='hide', message=FALSE}
 # remove unintelligible utterances
 murmur = c("xxx", "yyy", "yyy_yyy","---")
-utter_clean <- utter_data %>%
+utter_clean <- utter %>%
   filter(!c_utts %in% murmur) %>%
   mutate(c_utts = removeWords(c_utts, murmur),
          c_utts = gsub("[^[:alnum:]]", " ", c_utts)) %>%
-  filter(!grepl("^\\s*$", c_utts)) %>%
- left_join(participant, by=c("subject","session"))
+  filter(!grepl("^\\s*$", c_utts)) 
 
-# collapse each kid's utterances every month to one row
+
+#### Alert: Age column is NOT completely coded, but Session column is complete
+## complete missing Age data according to Session data
+session_80 <- visits %>%
+  filter(session > 12) %>%
+  mutate(age = round(mean(child_age_months))) %>%
+  select("session", "age") %>%
+  unique(.)
+
+session_age <- measures %>%
+  select("session", "child_age_months") %>%
+  mutate(child_age_months = round(child_age_months)) %>%
+  rename(age = child_age_months) %>%
+  unique(.) %>%
+  head(n=12) %>%
+  rbind(session_80)
+
+# collapse utterances at one month to one row
 utter_collapsed <- utter_clean %>%
-  mutate(age = round(child_age_months)) %>%
   filter(subject == subject) %>%
   filter(session == session) %>%
-  group_by(subject, session, age) %>%
-  summarise(utts = paste0(c_utts, collapse = " ")) %>%
-  filter(!is.na(age)) %>%
-  filter(age != 0)
+  group_by(subject, session) %>%
+  summarise(utts = paste0(c_utts, collapse = " "))
 
 # keep only complete rows
 utter_tokenize <- utter_collapsed[complete.cases(utter_collapsed),] %>%
-                        split(paste0(.$subject, "-", .$session, "-", .$age))  
+                        split(paste0(.$subject, "-", .$session, "-"))  
 
 ```
 
-## Measure Lexical Diversity
+## Measure Child's Lexical Diversity
 ```{r,measure lexical diversity, results='hide', message=FALSE}
-# measure LD 
-### create a function to measure lexical diversity(LD)
+##### TTR is not very informative
+measures %>%
+  filter(speaker == "C") %>%
+  ggplot(aes(x=session, y=ttr)) +
+  geom_smooth(se = F) +
+  theme_classic()
+
+# measure LD with MTLD
 tokenize_mtld <- function(df) {
   tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
-  MTLD <- MTLD(tokenized_df) #measure LD
-  mtld <- data_frame(mtld = MTLD@MTLD$MTLD) #get LD measurement
-  length <- data_frame(length = MTLD@tt$num.tokens)  #get length meaasurement
-  merge(x = length,y = mtld, by = NULL) #combine LD and lenghth values
+  MTLD <- MTLD(tokenized_df) # measure LD
+  mtld <- data_frame(mtld = MTLD@MTLD$MTLD) # get LD measurement
+  length <- data_frame(length = MTLD@tt$num.tokens)  # get length meaasurement
+  merge(x = length,y = mtld, by = NULL) # combine LD and lenghth values
 }
 
-### measure and filter accurate data
+# measure and filter accurate data
 utter_ld <- map(utter_tokenize, tokenize_mtld)%>% 
   bind_rows(.id = "id") %>%
-  separate(col = id, into = c("subject", "session", "age"), sep = "-") %>%
+  separate(col = id, into = c("subject", "session"), sep = "-") %>%
   mutate(subject = as.integer(subject),
-         session = as.integer(session),
-         age = as.numeric(age)) %>%
+         session = as.integer(session)) %>%
   filter(!mtld == as.numeric("inf")) %>%
   filter(!length < 100) # MTLD yield inaccurate results when utterance length <100 words
 
-### create a function to filter kids with more than 2 observeations
+# filter kids' data with more than 2 observeations
 mtld_filter <- function(df) {
   nmtld <- aggregate(df$mtld,
-  by = list(subject = df$subject),
-  length)
-  nchild <- nmtld$subject[(nmtld$x > 2)]
+  by = list(subject = df$subject),length)
+ 
+   nchild <- nmtld$subject[(nmtld$x > 2)]
+  
   df <- df %>%
   filter(subject %in% nchild) %>%
   group_by(subject)
+  
+  return(df)
 }
 
 filter_data <- mtld_filter(utter_ld)
+```
 
-### 110 kids in total
-id <- unique(filter_data$subject)
+## Measure Mother's Lexical Diversity
+```{r}
+# remove unintelligible utterances
+utter_mom <- utter %>%
+  filter(!p_utts %in% murmur) %>%
+  mutate(p_utts = removeWords(p_utts, murmur),
+         p_utts = gsub("[^[:alnum:]]", " ", p_utts)) %>%
+  filter(!grepl("^\\s*$", p_utts)) %>%
+  select(subject, session, p_utts)%>%
+  left_join(x=session_age, by = c("session")) 
 
-# measure mothers' speech
+# collapse each month's utterances to one row
+mom_col <- utter_mom %>%
+  group_by(subject, session, age) %>%
+  summarise(utts = paste0(p_utts, collapse = " "))
+
+# keep only complete rows
+mom_tok <- mom_col[complete.cases(mom_col),] %>%
+  split(paste0(.$subject, "-", .$session, "-", .$age))  
+
 mom_ld <- map(mom_tok, tokenize_mtld)%>% 
   bind_rows(.id = "id") %>%
-  separate(col = id, into = c("subject", "session", "age"), sep = "-") %>%
+  separate(col = id, into = c("subject", "session"), sep = "-") %>%
   mutate(subject = as.integer(subject),
-         session = as.integer(session),
-         age = as.numeric(age)) %>%
+         session = as.integer(session)) %>%
   filter(!mtld == as.numeric("inf")) %>%
   filter(!length < 100) 
 
-### get moms' mean and_slope 
-mom_mean <- mom_ld %>%
+mom_data <- mtld_filter(mom_ld)
+```
+
+## Merge Children's and Mother's data
+```{r}
+combine_data <- filter_data %>%
+  left_join(y = mom_data,by = c("subject", "session")) %>%
+  rename(kid_mtld = mtld.x,
+         kid_length = length.x,
+         mom_mtld = mtld.y,
+         mom_length = length.y) %>%
+  left_join(y = subjs, by = c("subject")) %>%
+  left_join(y=session_age, by = c("session")) %>%
+  filter(lesion == "") %>% ## keep data of typically-developing children
+  select(-c(lesion, note))
+
+complete_data <- combine_data[-which(is.na(combine_data$mom_mtld)),]
+
+### 66 kids in total
+id <- unique(complete_data$subject)
+
+# get each mom's mean and slope as potential predictors of following models 
+mom_mean <- complete_data %>%
   group_by(subject) %>%
-  mutate(mean = mean(mtld)) %>%
-  select("subject", "mean")
+  mutate(mom_mean = mean(mom_mtld)) %>%
+  distinct(subject, mom_mean)
 
-mean_value <- distinct(mom_mean) %>%
-  mutate(mean = as.numeric(mean))
-
-mom_slope_model <- lmer(mtld ~ log(age) + (log(age)|subject), data=mom_ld)
+mom_slope_model <- lmer(mom_mtld ~ log(age) + (log(age)|subject), data = complete_data)
 fix_mom <- fixef(mom_slope_model)
-mom_slope <- data.frame(slope= ranef(mom_slope_model)$subject[2] + fix_mom[2])
+mom_slope <- data.frame(slope = ranef(mom_slope_model)$subject[2] + fix_mom[2])
 mom_slope <- mom_slope %>%
-  mutate(subject = row.names(mom_slope))
-mom_slope <-  merge(mean_value, mom_slope, by = c("subject"))
-colnames(mom_slope) <- c("subject","mean","slope")
+  mutate(subject = as.integer(row.names(mom_slope))) %>%
+  rename(mom_slope = `log.age.`) %>%
+  left_join(y = mom_mean, by = c("subject"))
 
-### combine children and mother data
-combine_data <- merge(filter_data, mom_slope,by = c("subject"))
+complete_data <- merge(x = complete_data, y = mom_slope, by = c("subject"))
 ```
 
 
-## Recode Time
+# Model Growth Trajectory
+## Model1: child's lexical diversity as response
 ```{r}
-# take mean age (39.82 month) as initial session
-mean_age <- combine_data %>%
-  mutate(log_age = log(age)) %>%
-  ungroup() %>%
-  summarise(log_age = mean(log_age)) %>%
-  mutate(age = exp(log_age))
+null_model <- lmer(kid_mtld ~ 1 + (1 |subject), data = complete_data)
+age_model <- lmer(kid_mtld ~ 1 + log(age) + (1+log(age)|subject), data = complete_data)
+anova(null_model, age_model)
 
-recode_data <- combine_data %>%
-  mutate(log_age = log(age),
-         recode_age = log_age - mean(log_age)) 
+gender_model <- lmer(kid_mtld ~ 1 + log(age) + sex + (1+log(age)|subject), data = complete_data)
+anova(age_model, gender_model) # gender is not good predictor of kid_mtld
 
-### get kids' intercept 
-recode_age_model <- lmer(mtld ~ recode_age + (recode_age|subject), data = recode_data)
+age_mom_model <- lmer(kid_mtld ~ 1 + log(age) + mom_slope + (1+log(age)|subject), data = complete_data)
+anova(age_model, age_mom_model) # mom_slope is not good predictor
 
-fixed_effects <- fixef(recode_age_model) 
+kid_mom_model <- lmer(kid_mtld ~ 1 + log(age) + mom_mtld + (1+log(age)|subject), data = complete_data)
+anova(age_mom_model, kid_mom_model) 
 
-kid_effects <- as_data_frame(ranef(recode_age_model)$subject) 
+# summary optimal model
+Model1 <- kid_mom_model
+summary(Model1)
 
+
+
+# get kid's slope based on Model1
+fixed_effects <- fixef(Model1) 
+kid_effects <- as_data_frame(ranef(Model1)$subject) 
+drop <- c("(Intercept)","log(age)")
 kid_effects <-  kid_effects %>%
-  mutate(subject = rownames(kid_effects),
-         mean_age_intercept = `(Intercept)` + fixed_effects[1],
-         kid_slope = recode_age + fixed_effects[2]) %>%
+  mutate(subject = as.integer(rownames(kid_effects)),
+         kid_slope = `log(age)` + fixed_effects[2],
+         random = `(Intercept)`) %>%
   select(-one_of(drop))
 
-### combine kids' and moms' data (y stands for kids, x mom)
-recode_combine <- recode_data %>%
-  merge(x = kid_effects, by=c("subject")) %>%
-  merge(x = mom_ld, by = c("subject","session","age")) %>%
-  group_by(subject)  %>%
-  mutate(mom_lag = lag(mtld.x, n=6),
-         kid_lag = lag(mtld.y, n=6)) %>%
-  rename(mom_mean = mean, 
-         mom_slope = slope,
-         kid_mtld = mtld.y,
-         mom_mtld = mtld.x,
-         kid_length = length.y,
-         mom_length = length.x)
 
-# plot MTLD growth with age
+# plot predicted lexical diversity growth 
+predict_data <- complete_data %>%
+  ungroup() %>%
+  mutate(predicted = predict(Model1, newdata = )) 
+
 ggplot()+
-  geom_smooth(aes(x=age, y=mom_mtld, colour = "mother"), data = recode_combine)+
-  geom_smooth(aes(x=age, y=kid_mtld, colour = "children"), data = recode_combine)+
-    labs(title = "Childrens' and Mothers' Lexical Diversity Growth", subtitle = "0 ~ 300 Months") +
+  geom_smooth(aes(x = age, y = mom_mtld, color = "mother's observed data"),se = FALSE, data = predict_data)+
+  geom_smooth(aes(x=age, y=kid_mtld, color = "child's observed data"),se = FALSE, data = predict_data)+
+  geom_smooth(aes(x=age, y=predicted, color = "child's predicted data"),se = FALSE, data = predict_data)+
+    labs(title = "Childrens' and Mothers' Lexical Diversity Growth", subtitle = "0 ~ 138 Months") +
   theme_classic() +
   ylab("Lexical Diversity")+
   xlab("Age (month)")
 ```
 
+## Correlation between Child's Intercept at each age with Mother's LD Slope
+```{r}
+all_kid <- mom_slope %>%
+  select(subject, mom_slope)
 
-## Model Growth Curve
-```{r, modeling, message=FALSE}
-# Model1: predictors of kids' lexical diversity
-simple_model <- lmer(kid_mtld ~ recode_age + (recode_age|subject), data = recode_combine)
-mean_model <- 
-  lmer(kid_mtld ~ recode_age + mean_age_intercept + (recode_age|subject), data = recode_combine)
-anova(simple_model, mean_model) # kid's intercept at mean age  
+# get kid's intercept at each ahe
+for(i in (1:13)){
+mean_temp <- complete_data %>%
+  filter(age == session_age$age[i]) %>%
+  summarise(mean = mean(mom_mtld)) %>%
+  mutate(mom_slope = mean(mom_slope$mom_slope))
 
-slope_model <- 
-  lmer(kid_mtld ~ recode_age + mean_age_intercept + kid_slope + (recode_age|subject), 
-       data = recode_combine)
-anova(mean_model, slope_model) 
+kid_temp <- kid_effects %>%
+  mutate(age = session_age$age[i],
+         mom_mtld = mean_temp$mean,
+         mom_slope = mean_temp$mom_slope) %>%
+  mutate(kid_intercept = predict(Model1, newdata = .)) %>%
+  mutate(kid_intercept = kid_intercept + kid_effects$random) %>%
+  select(-c(age, random, mom_mtld, kid_slope, mom_slope)) 
 
-mean_mom_model <- 
-  lmer(kid_mtld ~ recode_age + mean_age_intercept + mom_mean + (recode_age|subject), 
-       data = recode_combine)
-anova(mean_model,mean_mom_model) 
+colnames(kid_temp)[[2]] <- paste(names(kid_temp)[[2]], c(session_age$age[i]),sep = "")
 
-slope_mom_model <- 
-  lmer(kid_mtld ~ recode_age + mean_age_intercept + mom_slope + (recode_age|subject), 
-       data = recode_combine)
-anova(mean_model,slope_mom_model) 
-
-### summary Model1
-Model1 <- mean_model
-summary(Model1)
-#### Finding: Kids' LD is mainly explained by their age and mean_age_intercept
-
-### save and plot the fitted values of optimal model
-recode_combine$predict_data <- fitted(Model1)
-
-recode_combine %>%
-  filter(age < 200) %>%
-  ggplot()+
-  geom_point(aes(x=age, y=kid_mtld))+
-  geom_smooth(aes(x=age, y=kid_mtld, colour = "observed data"))+
-  geom_smooth(aes(x=age, y=predict_data, colour = "predicted data"))+
-  theme_classic()
- 
-
-# Model2: predictors of kid's mean_age_intercept
-simple_model2 <- 
-  lm(mean_age_intercept ~ 1, data = recode_combine)
-age_model <- 
-  lm(mean_age_intercept ~ age, data = recode_combine)
-anova(simple_model2, age_model) 
-
-mean_model <-
-  lm(mean_age_intercept ~ mom_mean, data = recode_combine)
-anova(simple_model2, mean_model) # mom's mean LD
-  
-slope_model <-
-  lm(mean_age_intercept ~ mom_mean + mom_slope, data = recode_combine)
-anova(mean_model, slope_model) # slope of kid's LD
-  
-slope_kid_model <-
-  lm(mean_age_intercept ~ mom_mean + mom_slope + kid_slope, data = recode_combine)
-anova(slope_model, slope_kid_model) # slope of mom's LD
-  
-length_model <-
-  lm(mean_age_intercept ~ mom_mean + mom_slope + kid_slope + kid_length,
-  data = recode_combine)
-anova(slope_kid_model, length_model) # length of kids' utterances
-  
-length_mom_model <- lm(mean_age_intercept ~ mom_mean + mom_slope + 
-                         kid_slope + kid_length + mom_length,
-  data = recode_combine)
-anova(length_model, length_mom_model) 
-
-### summary Model2
-Model2 <- length_model
-summary(Model2)
-#### Finding: Kid's intercept at mean age(39.2mon) can be partially explained 
-#### by mom's speech and length of kids' utterances
+all_kid <- merge(x = all_kid, y = kid_temp, by = c("subject"))
+}
 
 
-# test lagged correlation (n=6)
-lag_model <- lm(mom_mtld ~ log(age) + kid_lag, data = recode_combine)
-lag_model2 <- lm(kid_mtld ~ log(age) + mom_lag, data = recode_combine)
-summary(lag_model)
-summary(lag_model2)
-#### Finding: mother's speech better predict variations of children's speech in 6 months 
-```
-
-
-## Correlation of mother's speech and kid's LD
-```{r, message=FALSE}
-# gather kids' intercept for every age that is coded as the origin of time
-#### Note: kid's slope is the same for any age as the initial session
-time_table <- unique(combine_data$age)
-time_table <- time_table[order(time_table)] 
-
-recode_age_combine <- mom_slope %>%
-  rename(mom_mean = mean, mom_slope = slope)
-
-# recode time  
-for(i in (1:68)){
-recode_data <- combine_data %>%
-  mutate(recode_age = log(age) - log(time_table[i]))
-
-recode_all_model <- lmer(mtld ~ recode_age + (recode_age|subject), data = recode_data)
-all_fixed <- fixef(recode_all_model) 
-all_effects <- as_data_frame(ranef(recode_all_model)$subject) 
-
-drop <- c("(Intercept)","recode_age")
-all_effects <-  all_effects %>%
-  mutate(subject = rownames(all_effects),
-         age = `(Intercept)` + all_fixed[1]) %>%
-  select(-one_of(drop))
-
-colnames(all_effects)[[2]] <- paste(names(all_effects)[[2]], c(time_table[[i]]),sep = "")
-
-recode_age_combine <- merge(x = recode_age_combine, y = all_effects, by = c("subject"))} 
-
-
-# examine correlation with moms' mean and slope
-cor_mean <- function(x){
-  cor_model <- lm(x ~ mom_mean, data = recode_age_combine)
-  cor_data <- as.data.frame(confint(cor_model, 'mom_mean', level=0.95))
-  return(cor_data)
-} 
-
+# measure its correlation with mom's slope
 cor_slope <- function(x){
-  cor_model <- lm(x ~ mom_slope, data = recode_age_combine)
+  cor_model <- lm(x ~ mom_slope, data = all_kid)
   cor_data <- as.data.frame(confint(cor_model, 'mom_slope', level=0.95))
   return(cor_data)
 } 
 
-### create dataframe: correlations between kids' LD intercept and moms' mean/slope
-cor_mean_data <- do.call(rbind, lapply(recode_age_combine[,4:71], cor_mean))
-cor_mean_data <- cor_mean_data %>%
+slope_data <- do.call(rbind, lapply(all_kid[,3:15], cor_slope))
+slope_data <- slope_data %>%
   rename(lower = `2.5 %`, upper = `97.5 %`) %>%
-  mutate(age = c(time_table),
-         mean = (lower+upper)/2)
-
-
-cor_slope_data <- do.call(rbind, lapply(recode_age_combine[,4:71], cor_slope))
-cor_slope_data <- cor_slope_data %>%
-  rename(lower = `2.5 %`, upper = `97.5 %`) %>%
-  mutate(age = c(time_table),
+  mutate(age = c(session_age$age),
          slope = (lower+upper)/2)
 
-
-# CI plot of correlation
+#### Highest correlation occur at session 1 (15 months)
 ggplot() + 
-  geom_errorbar(data=cor_mean_data, mapping=aes(x=age, ymin=lower, ymax=upper), width=0.5, size=1, color="navy")+
-  geom_point(data=cor_mean_data, mapping=aes(x=age, y=mean), size=1, shape=21, fill="white") +
-  theme_classic() +
-  ylab("Relationship of Child's LD to Mother's Mean LD") +
-  xlab("Recoded Age (month) as Initial Session") 
-
-
-ggplot() + 
-  geom_errorbar(data=cor_slope_data, mapping=aes(x=age, ymin=lower, ymax=upper), width=0.5, size=1, color="navy")+
-  geom_point(data=cor_slope_data, mapping=aes(x=age, y=slope), size=1, shape=21, fill="white") +
+  geom_errorbar(data=slope_data, mapping=aes(x=age, ymin=lower, ymax=upper), width=0.5, size=1, color="navy")+
+  geom_point(data=slope_data, mapping=aes(x=age, y=slope), size=1, shape=21, fill="white") +
   theme_classic() + 
-  ylab("Relationship of Child's LD to Mother's LD Slope") +
+  ylab("Relationship of Child's Intercept to Mother's Slope") +
   xlab("Recoded Age (month) as Initial Session") 
-#### Finding: the predictive relationship between mother's speech and kid's LD 
-#### increases steadily with age, so does variation
+```
+
+
+## Model2 & Model3: Child's Slope & Intercept as Repsonse
+```{r, modeling, message=FALSE}
+# predict kid's mtld value at 15 month as intercept
+mom_mean_15 <- complete_data %>%
+  filter(age == 15) %>%
+  summarise(mean = mean(mom_mtld)) %>%
+  mutate(mom_slope = mean(mom_slope$mom_slope))
+
+kid_data <- kid_effects %>%
+  mutate(age = 15,
+         mom_mtld = mom_mean_15$mean,
+         mom_slope = mom_mean_15$mom_slope) %>%
+  mutate(kid_intercept = predict(Model1, newdata = .)) %>%
+  mutate(kid_intercept = kid_intercept + kid_effects$random) %>%
+  left_join(y = subjs, by = c("subject"))  %>%
+  select(-c(age, lesion, note, mom_mtld, mom_slope, random)) %>%
+  left_join(y = mom_slope, by = c("subject")) 
+  
+  
+########### Model2: kid's intercept at 15 month as response #########
+null <- lm(kid_intercept ~ 1 , data = kid_data)
+full <- lm(kid_intercept ~ mom_slope + mom_mean + sex + race, data = kid_data)
+step(null, scope=list(lower=null, upper=full), direction="both", na.rm = TRUE)
+
+# summarise Model2 for kid's intercept
+Model2 <- lm(kid_intercept ~ mom_slope, data = kid_data)
+summary(Model2)
+  
+
+
+############ Model3: kid's slope as response #############
+null2 <- lm(kid_slope ~ 1, data = kid_data)
+full2 <- lm(kid_slope ~ kid_intercept + mom_slope + mom_mean + sex + race, data = kid_data)
+step(null2, scope=list(lower=null2, upper=full2), direction="both", na.rm = TRUE)
+
+# summarise Model3 for kid's slope 
+Model3 <- lm(kid_slope ~ mom_mean + kid_intercept, data = kid_data)
+summary(Model3)
+```
+
+
+## Finalize Growth Curve Model
+```{r}
+###### Final model: 
+###### kid_mtld = -42.5 + (1.69 * mom_slope - 19.5) +  0.173 * mom_mtld + (14.2 + 0.014 * mom_mean - 0.186 * kid_intercept) * log(age)
+
+### create a function and test 
+temp <- complete_data
+
+make_curve <- function(df){
+# get mom's slope and mean
+  mom_slope_model <- lmer(mom_mtld ~ log(age) + (log(age)|subject), data=df)
+  fix_mom <- fixef(mom_slope_model)
+  mom_slope <- data.frame(slope= ranef(mom_slope_model)$subject[2] + fix_mom[2])
+  mom_data <- mom_slope %>%
+    mutate(subject = as.integer(row.names(mom_slope))) %>%
+    rename(mom_slope = `log.age.`) %>%
+    mutate(mom_slope = as.numeric(mom_slope)) %>%
+    left_join(y = mom_mean, by = c("subject")) 
+ 
+# predict kid's intercept at 15 month
+  kid_mom_model <- lmer(kid_mtld ~ 1 + log(age) + mom_mtld + (1+log(age)|subject), data = df)
+  kid_temp_data <- as_data_frame(ranef(kid_mom_model)$subject) 
+  kid_temp_data <-  kid_temp_data %>%
+    mutate(subject = as.integer(rownames(kid_temp_data)),
+          random = `(Intercept)`) %>%
+    select(subject, random)
+  
+  mom_mean_15 <- df %>%
+    filter(age == 15) %>%
+    summarise(mean = mean(mom_mtld)) %>%
+    mutate(mom_slope = mean(mom_data$mom_slope))
+
+  data <- kid_temp_data %>%
+    mutate(age = 15,
+         mom_mtld = mom_mean_15$mean,
+         mom_slope = mom_mean_15$mom_slope) %>%
+   mutate(kid_intercept = predict(Model1, newdata = .)) %>%
+   mutate(kid_intercept = kid_intercept + kid_temp_data$random) %>%
+   select(-c(age, mom_mtld, mom_slope, random)) %>%
+    left_join(y = mom_data, by =c("subject"))
+ 
+# predict every child's growth trajectory  
+  df <- df %>%
+  select(subject, session, age, kid_mtld, kid_length, mom_mtld, mom_length) %>%
+  left_join(y=data, by=c("subject")) %>%
+  mutate(prediction = (-42.5 + 1.69 * mom_slope - 19.5 +  0.173 * mom_mtld + (14.2 + 0.014 * mom_mean - 0.186 * kid_intercept) * log(age)))  
+  
+  return(df)
+}
+
+
+#### plot each kid's (roughly) predicted growth trajectory
+temp %>%
+  make_curve(.) %>%
+  filter(subject %in% head(unique(.$subject), 15)) %>%
+  ggplot() +
+    geom_smooth(aes(x=age, y=kid_mtld, color = "observed growth"), se=F) +
+    geom_smooth(aes(x=age, y=prediction, color="predicted growth"), se=F)+
+    facet_wrap(~subject) +
+    theme_classic() +
+    xlab("Age(month)") +
+    ylab("Child's Lexical Diversity")
+
+
 ```
