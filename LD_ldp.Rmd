@@ -205,11 +205,8 @@ anova(age_model, gender_model) # gender is not good predictor of kid_mtld
 age_mom_model <- lmer(kid_mtld ~ 1 + log(age) + mom_slope + (1+log(age)|subject), data = complete_data)
 anova(age_model, age_mom_model) # mom_slope is not good predictor
 
-kid_mom_model <- lmer(kid_mtld ~ 1 + log(age) + mom_mtld + (1+log(age)|subject), data = complete_data)
-anova(age_mom_model, kid_mom_model) 
-
 # summary optimal model
-Model1 <- kid_mom_model
+Model1 <- age_model
 summary(Model1)
 
 
@@ -220,15 +217,14 @@ kid_effects <- as_data_frame(ranef(Model1)$subject)
 drop <- c("(Intercept)","log(age)")
 kid_effects <-  kid_effects %>%
   mutate(subject = as.integer(rownames(kid_effects)),
-         kid_slope = `log(age)` + fixed_effects[2],
-         random = `(Intercept)`) %>%
+         kid_slope = `log(age)` + fixed_effects[2]) %>%
   select(-one_of(drop))
 
 
 # plot predicted lexical diversity growth 
 predict_data <- complete_data %>%
   ungroup() %>%
-  mutate(predicted = predict(Model1, newdata = )) 
+  mutate(predicted = predict(Model1, newdata =. )) 
 
 ggplot()+
   geom_smooth(aes(x = age, y = mom_mtld, color = "mother's observed data"),se = FALSE, data = predict_data)+
@@ -239,6 +235,7 @@ ggplot()+
   ylab("Lexical Diversity")+
   xlab("Age (month)")
 ```
+
 
 ## Correlation between Child's Intercept at each age with Mother's LD Slope
 ```{r}
@@ -256,9 +253,8 @@ kid_temp <- kid_effects %>%
   mutate(age = session_age$age[i],
          mom_mtld = mean_temp$mean,
          mom_slope = mean_temp$mom_slope) %>%
-  mutate(kid_intercept = predict(Model1, newdata = .)) %>%
-  mutate(kid_intercept = kid_intercept + kid_effects$random) %>%
-  select(-c(age, random, mom_mtld, kid_slope, mom_slope)) 
+  mutate(kid_intercept = predict(Model1, newdata = .))  %>%
+  select(-c(age,mom_mtld, kid_slope, mom_slope)) 
 
 colnames(kid_temp)[[2]] <- paste(names(kid_temp)[[2]], c(session_age$age[i]),sep = "")
 
@@ -301,10 +297,9 @@ kid_data <- kid_effects %>%
   mutate(age = 15,
          mom_mtld = mom_mean_15$mean,
          mom_slope = mom_mean_15$mom_slope) %>%
-  mutate(kid_intercept = predict(Model1, newdata = .)) %>%
-  mutate(kid_intercept = kid_intercept + kid_effects$random) %>%
+  mutate(kid_intercept = predict(Model1, newdata = .))  %>%
   left_join(y = subjs, by = c("subject"))  %>%
-  select(-c(age, lesion, note, mom_mtld, mom_slope, random)) %>%
+  select(-c(age, lesion, note, mom_mtld, mom_slope)) %>%
   left_join(y = mom_slope, by = c("subject")) 
   
   
@@ -314,10 +309,9 @@ full <- lm(kid_intercept ~ mom_slope + mom_mean + sex + race, data = kid_data)
 step(null, scope=list(lower=null, upper=full), direction="both", na.rm = TRUE)
 
 # summarise Model2 for kid's intercept
-Model2 <- lm(kid_intercept ~ mom_slope, data = kid_data)
+Model2 <- lm(kid_intercept ~ mom_mean + mom_slope, data = kid_data)
 summary(Model2)
   
-
 
 ############ Model3: kid's slope as response #############
 null2 <- lm(kid_slope ~ 1, data = kid_data)
@@ -325,7 +319,7 @@ full2 <- lm(kid_slope ~ kid_intercept + mom_slope + mom_mean + sex + race, data 
 step(null2, scope=list(lower=null2, upper=full2), direction="both", na.rm = TRUE)
 
 # summarise Model3 for kid's slope 
-Model3 <- lm(kid_slope ~ mom_mean + kid_intercept, data = kid_data)
+Model3 <- lm(kid_slope ~ mom_mean, data = kid_data)
 summary(Model3)
 ```
 
@@ -333,13 +327,18 @@ summary(Model3)
 ## Finalize Growth Curve Model
 ```{r}
 ###### Final model: 
-###### kid_mtld = -42.5 + (1.69 * mom_slope - 19.5) +  0.173 * mom_mtld + (14.2 + 0.014 * mom_mean - 0.186 * kid_intercept) * log(age)
+###### kid_mtld = (-42.5 -8.41 + 0.14 * mom_mean + 0.39 * mom_slope)  + (14.7 + 0.06 * mom_mean) * log(age))  
 
 ### create a function and test 
 temp <- complete_data
 
 make_curve <- function(df){
 # get mom's slope and mean
+  mom_mean <- df %>%
+  group_by(subject) %>%
+  mutate(mom_mean = mean(mom_mtld)) %>%
+  distinct(subject, mom_mean)
+  
   mom_slope_model <- lmer(mom_mtld ~ log(age) + (log(age)|subject), data=df)
   fix_mom <- fixef(mom_slope_model)
   mom_slope <- data.frame(slope= ranef(mom_slope_model)$subject[2] + fix_mom[2])
@@ -349,33 +348,11 @@ make_curve <- function(df){
     mutate(mom_slope = as.numeric(mom_slope)) %>%
     left_join(y = mom_mean, by = c("subject")) 
  
-# predict kid's intercept at 15 month
-  kid_mom_model <- lmer(kid_mtld ~ 1 + log(age) + mom_mtld + (1+log(age)|subject), data = df)
-  kid_temp_data <- as_data_frame(ranef(kid_mom_model)$subject) 
-  kid_temp_data <-  kid_temp_data %>%
-    mutate(subject = as.integer(rownames(kid_temp_data)),
-          random = `(Intercept)`) %>%
-    select(subject, random)
-  
-  mom_mean_15 <- df %>%
-    filter(age == 15) %>%
-    summarise(mean = mean(mom_mtld)) %>%
-    mutate(mom_slope = mean(mom_data$mom_slope))
-
-  data <- kid_temp_data %>%
-    mutate(age = 15,
-         mom_mtld = mom_mean_15$mean,
-         mom_slope = mom_mean_15$mom_slope) %>%
-   mutate(kid_intercept = predict(Model1, newdata = .)) %>%
-   mutate(kid_intercept = kid_intercept + kid_temp_data$random) %>%
-   select(-c(age, mom_mtld, mom_slope, random)) %>%
-    left_join(y = mom_data, by =c("subject"))
- 
 # predict every child's growth trajectory  
   df <- df %>%
   select(subject, session, age, kid_mtld, kid_length, mom_mtld, mom_length) %>%
-  left_join(y=data, by=c("subject")) %>%
-  mutate(prediction = (-42.5 + 1.69 * mom_slope - 19.5 +  0.173 * mom_mtld + (14.2 + 0.014 * mom_mean - 0.186 * kid_intercept) * log(age)))  
+  left_join(y= mom_data, by=c("subject")) %>%
+  mutate(prediction = (-50.9 + 0.14 * mom_mean + 0.39 * mom_slope)  + (14.7 + 0.06 * mom_mean) * log(age))  
   
   return(df)
 }
@@ -384,7 +361,7 @@ make_curve <- function(df){
 #### plot each kid's (roughly) predicted growth trajectory
 temp %>%
   make_curve(.) %>%
-  filter(subject %in% head(unique(.$subject), 15)) %>%
+  filter(subject %in% head(unique(.$subject), 16)) %>%
   ggplot() +
     geom_smooth(aes(x=age, y=kid_mtld, color = "observed growth"), se=F) +
     geom_smooth(aes(x=age, y=prediction, color="predicted growth"), se=F)+
