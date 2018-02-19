@@ -4,15 +4,18 @@ author: 'Yawen Yu and Dan Yurovsky'
 date: "12/5/2017"
 output: pdf_document
 ---
-## Load Data & Clean Data
-```{r, load data, message=FALSE, echo=TRUE}
-library(sjPlot)
+* Library 
+```{r, load data, message=FALSE, results='hide'}
 library(koRpus)
 library(tidyverse)
 library(tm)
 library(lme4)
 library(dplyr)
+library(feather)
+```
 
+* Load and Clean Data
+```{r, eval=FALSE, message=FALSE, results='hide'}
 # Read in LDP data
 ldp <- src_sqlite("/Users/Yawen/Desktop/application/lexical diversity/trial5_ldp/ldp.db")
 
@@ -37,10 +40,7 @@ measures <- tbl(ldp, "measures") %>%
   select(-last_update) %>%
   left_join(y=visits, by = c("subject", "session")) %>%
   mutate(ttr = word_types/word_tokens) 
-```
 
-## Clean utterance data
-```{r, clean data, results='hide', message=FALSE}
 # remove unintelligible utterances
 murmur = c("xxx", "yyy", "yyy_yyy","---")
 utter_clean <- utter %>%
@@ -50,8 +50,8 @@ utter_clean <- utter %>%
   filter(!grepl("^\\s*$", c_utts)) 
 
 
-#### Alert: Age column is NOT completely coded, but Session column is complete
-## complete missing Age data according to Session data
+#### Notice: Age column is NOT completely coded, but Session column is complete
+# complete missing Age data according to Session data
 session_80 <- visits %>%
   filter(session > 12) %>%
   mutate(age = round(mean(child_age_months))) %>%
@@ -79,8 +79,8 @@ utter_tokenize <- utter_collapsed[complete.cases(utter_collapsed),] %>%
 
 ```
 
-## Measure Child's Lexical Diversity
-```{r,measure lexical diversity, results='hide', message=FALSE}
+* Measure Lexical Diversity
+```{r, message=F, eval=F, results='hide'}
 ##### TTR is not very informative
 measures %>%
   filter(speaker == "C") %>%
@@ -121,10 +121,9 @@ mtld_filter <- function(df) {
 }
 
 filter_data <- mtld_filter(utter_ld) 
-```
 
-## Measure Mother's Lexical Diversity
-```{r}
+
+# Measure Mother's Lexical Diversity
 # remove unintelligible utterances
 utter_mom <- utter %>%
   filter(!p_utts %in% murmur) %>%
@@ -152,12 +151,9 @@ mom_ld <- map(mom_tok, tokenize_mtld)%>%
   filter(!length < 100) 
 
 mom_data <- mtld_filter(mom_ld)
-```
 
 
-## Merge Children's and Mother's data
-```{r}
-# original data
+# merge data
 complete_data <- filter_data %>%
   left_join(y = mom_data,by = c("subject", "session")) %>%
   rename(kid_mtld = mtld.x,
@@ -175,28 +171,33 @@ complete_data <- filter_data %>%
   select(subject, session, age, kid_length, kid_mtld, mom_length, mom_mtld, sex, race, ethn, income)
 
 
-## 66 kids in total
+# 66 kids in total
 id <- unique(complete_data$subject)
+
+# write data to disk
+write_feather(filter_data, 
+              "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/filter_data.feather")
+write_feather(mom_data, 
+              "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/mom_data.feather")
+write_feather(complete_data, 
+              "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/complete_data.feather")
 ```
 
 
-## Model Growth Trajectory
-```{r}
-# Model1: child's lexical diversity as response
-null_model <- lmer(kid_mtld ~ 1 + (1 |subject), data = complete_data)
-age_model <- lmer(kid_mtld ~ 1 + log(age) + (1+log(age)|subject), data = complete_data)
-anova(null_model, age_model)
+## Model 1: Growth Trajectory
+```{r, message=F}
+filter_data <- 
+  read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/filter_data.feather")
+mom_data <- 
+  read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/mom_data.feather")
+complete_data <- 
+  read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/complete_data.feather")
 
-gender_model <- lmer(kid_mtld ~ 1 + log(age) + sex + (1+log(age)|subject), data = complete_data)
-anova(age_model, gender_model) # gender is not good predictor of kid_mtld
 
-eth_model <- lmer(kid_mtld ~ 1 + log(age) + race + (1+log(age)|subject), data = complete_data)
-anova(age_model, eth_model) # race is not a good predictor
+# Model1: child's lexical diversity of each session as response
+age_model <- lmer(kid_mtld ~ 1 + log(age) + 
+                    (1+log(age)|subject), data = complete_data)
 
-income_model <- lmer(kid_mtld ~ 1 + log(age) + (1|income) + (1+log(age)|subject), data = complete_data)
-anova(age_model, income_model) # income is not a good predictor
-
-# summary optimal model
 Model1 <-age_model
 summary(Model1)
 
@@ -215,10 +216,14 @@ predict_data <- complete_data %>%
   mutate(predicted = predict(Model1, newdata =.)) 
 
 ggplot()+
-  geom_smooth(aes(x = age, y = mom_mtld, color = "mother's observed data"),se = FALSE, data = predict_data)+
-  geom_smooth(aes(x=age, y=kid_mtld, color = "child's observed data"),se = FALSE, data = predict_data)+
-  geom_smooth(aes(x=age, y=predicted, color = "child's predicted data"),se = FALSE, data = predict_data)+
-  labs(title = "Childrens' and Mothers' Lexical Diversity Growth", subtitle = "0 ~ 138 Months") +
+  geom_smooth(aes(x = age, y = mom_mtld, 
+                  color = "mother's observed data"),se = FALSE, data = predict_data)+
+  geom_smooth(aes(x=age, y=kid_mtld, 
+                  color = "child's observed data"),se = FALSE, data = predict_data)+
+  geom_smooth(aes(x=age, y=predicted, 
+                  color = "child's predicted data"),se = FALSE, data = predict_data)+
+  labs(title = "Childrens' and Mothers' Lexical Diversity Growth", 
+       subtitle = "0 ~ 138 Months") +
   theme_classic() +
   ylab("Lexical Diversity")+
   xlab("Age (month)") +
@@ -226,7 +231,6 @@ ggplot()+
 ```
 
 
-# Revised Part
 ## Get Estimated Intercept 
 ```{r, modeling, message=FALSE}
 # Child's predicted mtld value at 20 month as intercept
@@ -236,7 +240,8 @@ kid_data <- kid_effects %>%
   select(-c(age))
 
 # predict mother's intercept at 20 month  
-mom_slope_model <- lmer(mom_mtld ~  1+ log(age) + (1 + log(age)|subject), data = complete_data)
+mom_slope_model <- lmer(mom_mtld ~  1+ log(age) 
+                        + (1 + log(age)|subject), data = complete_data)
 
 mom_fix <- fixef(mom_slope_model) 
 mom_random <- as_data_frame(ranef(mom_slope_model)$subject) 
@@ -253,26 +258,53 @@ mom_effects <-  mom_random %>%
 all_data <- kid_data %>%
   left_join(mom_effects) %>%
   left_join(complete_data) %>%
-  group_by(subject)
+  group_by(subject, kid_slope, kid_intercept, 
+           mom_slope, mom_intercept, race, sex, ethn) %>%
+  summarise(income = mean(income)) %>%
+  ungroup() %>%
+  mutate(race = factor(race, levels = c("WH", "BL", "2+"))) %>%
+  mutate(sex = factor(sex, levels = c("M", "F")))
 
+month_data <- complete_data %>%
+  left_join(select(all_data, subject, mom_slope, mom_intercept))  %>%
+  ungroup() %>%
+  mutate(race = factor(race, levels = c("WH", "BL", "2+")))%>%
+  mutate(sex = factor(sex, levels = c("M", "F")))
+
+
+# residual as response
+age_model <- lm(kid_mtld ~ scale(log(age)), data = month_data)
+
+resid_resid <- month_data %>% 
+  mutate(residual = residuals(age_model)) %>%
+  lm(residual ~ mom_slope + mom_intercept + income + sex + age +ethn, data = .) %>%
+  residuals(.)
+  
+# Mixed effect model with kid's monthly mtld measurement as response
+full_model <- lmer(scale(kid_mtld) ~ scale(log(age)) + 
+                     scale(mom_slope) + scale(mom_intercept) + 
+                     (income > median(income)) + 
+                     (scale(log(age)) | subject), data = month_data)
+
+month_data %>% 
+  mutate(residual = residuals(age_model)) %>%
+  lm(residual ~ mom_slope + mom_intercept + income, data = .) %>%
+  summary()
 ```  
 
 
 ## Model2: Child Intercept as Repsonse
-```{r}
+```{r, message=F, results='hide'}
 null <- lm(kid_intercept ~ 1 , data = all_data)
-full <- lm(kid_intercept ~ mom_slope + mom_intercept + sex + race + income, data = all_data)
-step(null, scope=list(lower=null, upper=full), direction="both", na.rm = TRUE)
-
+full <- lm(kid_intercept ~ mom_slope + mom_intercept + 
+             sex + race + income, data = all_data)
+stats::step(null, scope=list(lower=null, upper=full), direction="both", na.rm = TRUE)
+```
+```{r, message=F}
 ## summarize model
-Model2 <- lm(kid_intercept ~ mom_slope + mom_intercept + income, data = all_data)
-
+Model2 <- lm(kid_intercept ~ mom_slope + mom_intercept + 
+               scale(income),  data = all_data)
 summary(Model2)
-
-sjt.lmer(Model2, show.header = TRUE, string.est = "Estimate", 
-         string.ci = "Conf. Int.", string.p = "p-value",
-         string.dv = "Response", string.pred = "Coefficients",
-         p.numeric = F)
 
 
 # Plot 
@@ -285,20 +317,45 @@ ggplot(all_data, aes(x = mom_slope, y = kid_intercept))+
   geom_smooth(se=F)+
   theme_classic()+
   labs(title = "Relationship between Mother's Slope and Child's Intercept") 
+```
 
-ggplot(all_data, aes(x=mom_slope, y=kid_intercept, color=race))+
-  geom_boxplot()+
-  facet_wrap(~race)+
-  theme_classic()+
-   labs(title = "Relationship between Mother's Slope and Child's Intercept", subtitle = "Group by Ethnicity") 
+  
+## Model3: Child's Slope as Response
+```{r, message=F, results='hide'}
+null2 <- lm(kid_slope ~ 1, data = all_data)
+full2 <- lm(kid_slope ~ kid_intercept + mom_slope + 
+              mom_intercept + sex + race + income, data = all_data)
+stats::step(null2, scope=list(lower=null2, upper=full2), direction="both", na.rm = TRUE)
+```
+```{r, message=F}
+# summarize Model3 
+Model3 <- lm(kid_slope ~ mom_intercept, data = all_data) 
+summary(Model3)
+```
 
 
+## Model 4: Mother's intercept as Response
+```{r, message=F, results='hide'}
+# Mothers talk differently to boys and girls
+null3 <- lm(mom_intercept ~ 1 , data = all_data)
+full3 <- lm(mom_intercept ~ kid_slope + kid_intercept + 
+              sex + race + income, data = all_data)
+stats::step(null3, scope=list(lower=null3, upper=full3), direction="both", na.rm = TRUE)
+```
+```{r, message=F}
+# summarize Model 4
+Model4 <- lm(formula = mom_intercept ~ kid_intercept + sex + race + kid_slope + 
+    income, data = all_data)
+summary(Model4)
+```
 
+## Effect of Maternal Speech
+```{r, message=F}
 # How to define mother's speech as "more/less diverse"?
 # Also, what effect does mother's DIVERSITY have on kid's INTERCEPT?
 
-## 1) 1sd ± mean of mothers' intercept
-# high:28 moms; median:32; low: 6;
+# 1) 1sd ± mean of mothers' intercept
+## high:28 moms; median:32; low: 6;
 all_data %>%
   ungroup(.) %>%
   mutate(mean = mean(mom_intercept),
@@ -310,22 +367,23 @@ all_data %>%
   geom_density()+
   theme_classic()
 
-## 2) look at slope: to what degree mother change the way they talk
-# high:10 moms; median:47; low: 9
+
+# 2) look at slope: to what degree mother change the way they talk
+## high:10 moms; median:47; low: 9
 all_data %>%
   ungroup()%>%
   mutate(mean = mean(mom_slope),
          sd = sd(mom_slope)) %>%
   mutate(rank = ifelse(mom_slope <= mean-sd, 0,
-                       ifelse(mean+sd >mom_slope, 1,2)),
+                       ifelse(mean+sd > mom_slope, 1,2)),
          rank = as.factor(rank)) %>%
   ggplot(.,aes(x=kid_intercept, color=rank))+
   geom_density()+
   theme_classic()
 
 
-## 3) difference between mom's intercept and kid's intercept
-# high:32 moms; lower: 34 moms
+# 3) difference between mom's intercept and kid's intercept
+## high:32 moms; lower: 34 moms
 all_data %>%
   ungroup()%>%
   mutate(dif = mom_intercept - kid_intercept) %>%
@@ -337,11 +395,9 @@ all_data %>%
   facet_wrap(~sex)+
   theme_classic()
 
-
-
 # General growth trajectory varies by mother's diversity of speech
-# shows dif effects on boys and girls
-all_data %>%
+# also show dif effects on boys and girls
+month_data %>%
   ungroup()%>%
  mutate(mean = mean(mom_intercept),
         sd = sd(mom_intercept)) %>%
@@ -351,164 +407,7 @@ all_data %>%
   group_by(subject) %>%
   ggplot(.,aes(x=age, y=kid_mtld, color=rank))+
   geom_smooth(se=F)+
-  facet_wrap(~sex)+
-  theme_classic()
+  theme_classic() +
+  scale_x_log10()+
+  facet_wrap(~sex)
 ```  
-  
-  
-## Model3: Child's Slope as Response
-```{r}
-null2 <- lm(kid_slope ~ 1, data = all_data)
-full2 <- lm(kid_slope ~ kid_intercept + mom_slope + mom_intercept + sex + race + income, data = all_data)
-step(null2, scope=list(lower=null2, upper=full2), direction="both", na.rm = TRUE)
-
-# summarize Model3 
-Model3 <- lm(kid_slope ~ mom_intercept + mom_slope + sex + race + 
-    income + kid_intercept, data = all_data) 
-
-summary(Model3)
-
-sjt.lmer(Model3, show.header = TRUE, string.est = "Estimate", 
-         string.ci = "Conf. Int.", string.p = "p-value",
-         string.dv = "Response", string.pred = "Coefficients",
-         p.numeric = F)
-
-
-
-
-# Plot
-all_data %>%
-  filter(race=="WH") %>%
-ggplot(., aes(x = kid_slope, color=sex))+
-  geom_density()+
-  theme_classic()+
-  labs(title = "Variation Among White Children of Different Genders") 
-
-all_data %>%
-  ungroup(.)%>%
-  ggplot(.,aes(x=race, y=kid_slope, color=sex))+
-  geom_boxplot()+
-  theme_classic()+
-  labs(title = "Variation Among Children of Different Ethnicities") 
-
-
-
-# How to define mother's speech as "more/less diverse"?
-# Also, what effect does mother's DIVERSITY have on kid's SLOPE?
-
-## 1) 1 SD from mean of mothers' slope
-# high: 28 moms; median: 32; low: 6;
-all_data %>%
-  ungroup()%>%
-  mutate(mean = mean(mom_intercept),
-         sd = sd(mom_intercept)) %>%
-  mutate(rank = ifelse(mom_intercept < mean-sd, 0, 
-                       ifelse( mom_intercept < mean, 1,2)),
-         rank = as.factor(rank)) %>%
-  group_by(subject) %>%
-  ggplot(.,aes(x=kid_slope, color=rank))+
-  geom_density()+
-  theme_classic()
-
-all_data %>%
-  ungroup()%>%
-  mutate(mean = mean(mom_intercept),
-         sd = sd(mom_intercept)) %>%
-  mutate(rank = ifelse(mom_intercept < mean-sd, 0, 
-                       ifelse( mom_intercept < mean, 1,2)),
-         rank = as.factor(rank))%>%
-  group_by(subject) %>%
-  ggplot(.,aes(x=kid_slope, color=sex))+
-  geom_density()+
-  facet_grid(.~rank)+
-  theme_classic()
-
-
-## 2) look at slope: to what degree mothers change the way they talk
-# high:31 moms; median:35 moms; low:0;
-all_data %>%
-  ungroup()%>%
-  mutate(mean = mean(mom_slope),
-         sd = mean(mom_slope)) %>%
-  mutate(rank = ifelse(mom_slope < mean-sd, 0, 
-                       ifelse(mom_slope < mean, 1,2)),
-         rank = as.factor(rank)) %>%
-  ggplot(.,aes(x=kid_slope, color=rank))+
-  geom_density()+
-  theme_classic()
-
-all_data %>%
-  ungroup()%>%
-  mutate(mean = mean(mom_slope),
-         sd = mean(mom_slope)) %>%
-  mutate(rank = ifelse(mom_slope < mean-sd, 0, 
-                       ifelse(mom_slope < mean, 1,2)),
-         rank = as.factor(rank))%>%
-  ggplot(.,aes(x=kid_slope, color=sex))+
-  geom_density()+
-  facet_grid(.~rank)+
-  theme_classic()
-
-## 3) difference between mom's intercept and kid's intercept at 20 months
-# high:32 moms; median:25; low: 9
-all_data %>%
-  ungroup()%>%
-  mutate(dif = mom_intercept - kid_intercept) %>%
-  mutate(mean = mean(dif),
-         sd = sd(dif),
-        rank = ifelse(dif < mean-sd, 0, 
-                      ifelse(dif < mean, 1, 2)),
-        rank = as.factor(rank)) %>%
-  ggplot(.,aes(x=kid_slope, color=rank))+
-  geom_density()+
-  theme_classic()
-
-all_data %>%
-  ungroup()%>%
-  mutate(dif = mom_intercept - kid_intercept) %>%
-  mutate(mean = mean(dif),
-         sd = sd(dif),
-        rank = ifelse(dif < mean-sd, 0, 
-                      ifelse(dif < mean, 1, 2)),
-        rank = as.factor(rank)) %>%
-  ggplot(.,aes(x=kid_slope, color=sex))+
-  geom_density()+
-  facet_grid(.~rank)+
-  theme_classic()
-```
-
-
-## Model 4: Mother's intercept as Response
-```{r}
-# Mothers talk differently to boys and girls
-null3 <- lm(mom_intercept ~ 1 , data = all_data)
-full3 <- lm(mom_intercept ~ kid_slope + kid_intercept + sex + race + income, data = all_data)
-step(null3, scope=list(lower=null3, upper=full3), direction="both", na.rm = TRUE)
-
-# summarize Model 4
-Model4 <- lm(formula = mom_intercept ~ kid_intercept + sex + race + kid_slope + 
-    income, data = all_data)
-
-summary(Model4)
-
-sjt.lmer(Model4, show.header = TRUE, string.est = "Estimate", 
-         string.ci = "Conf. Int.", string.p = "p-value",
-         string.dv = "Response", string.pred = "Coefficients",
-         p.numeric = F)
-
-# Plot
-# 32 girls, 34 boys
-ggplot(all_data2, aes(x=mom_intercept, color=sex))+
-  geom_density()+
-  theme_classic()+
-  labs(title = "Variation of Mother's Intercept among 
-Children of Different Genders") 
-
-## this variation is not mediated by income
-all_data %>%
-  ggplot(., aes(x=mom_intercept, color=sex))+
-  geom_density()+
-  facet_wrap(~income)+
-  theme_classic()
-```
-
