@@ -1,0 +1,248 @@
+---
+title: "childes_ld"
+author: "Yawen Yu and Dan Yurovsky"
+date: "2/7/2018"
+output: pdf_document
+---
+
+```{r, library, message=F}
+library(feather)
+library(koRpus)
+library(tidyverse)
+library(tm)
+library(lme4)
+library(dplyr)
+library(childesr)
+```
+
+* Load Data
+```{r, message=FALSE}
+# get information of all participants
+participants <- get_participants(collection = NULL,
+corpus = NULL, child = NULL, role = NULL)
+```
+
+* Clean Data and Assess Lexical Diversity 
+```{r, eval=F, message=FALSE}
+# get utterances 
+utter <- get_utterances(
+collection = NULL, corpus = NULL,
+child = NULL, role = NULL) %>%
+  filter(language == "eng")
+
+# remove unintelligible utterances
+murmur = c("xxx", "yyy", "yyy_yyy","---")
+
+utter_kid <- utter %>%
+  filter(speaker_code == "CHI") %>%
+  filter(!gloss %in% murmur) %>%
+  mutate(gloss = removeWords(gloss, murmur),
+         gloss = gsub("[^[:alnum:]]", " ", gloss)) %>%
+  filter(!grepl("^\\s*$", gloss)) 
+
+utter_p <- utter %>%
+  filter(speaker_code == c("MOT","FAT")) %>%
+  filter(!gloss %in% murmur) %>%
+  mutate(gloss = removeWords(gloss, murmur),
+         gloss = gsub("[^[:alnum:]]", " ", gloss)) %>%
+  filter(!grepl("^\\s*$", gloss)) 
+
+# collapse utterances of child at one month to one row
+kid_collapsed <- utter_kid %>%
+  filter(corpus_id == corpus_id) %>%
+  filter(speaker_id == speaker_id) %>%
+  filter(target_child_age == target_child_age) %>%
+  filter(transcript_id == transcript_id) %>%
+  group_by(corpus_id, speaker_id, target_child_age, transcript_id) %>%
+  summarise(utts = paste0(gloss, collapse = " ")) %>%
+  mutate(age = floor(target_child_age/30.5)) %>%
+  ungroup(.)%>%
+  select(-target_child_age)%>%
+  rename(corpus = corpus_id, subject = speaker_id,
+         session = transcript_id) 
+
+# tokenize child's speech 
+kid_tokenized <- kid_collapsed %>%  
+  ungroup(.) %>%
+  filter(complete.cases(.)) %>%
+  split(paste0(.$corpus, "-",.$subject, "-", .$age, "-"))  
+ 
+# tokenize utterances of caregiver 
+p_tokenized <- utter_p %>%
+  filter(corpus_id == corpus_id) %>%
+  filter(transcript_id == transcript_id) %>%
+  filter(target_child_age == target_child_age) %>%
+  group_by(corpus_id, transcript_id, target_child_age) %>%
+  summarise(utts = paste0(gloss, collapse = " ")) %>%
+  mutate(age = floor(target_child_age/30.5)) %>%
+  select(-target_child_age) %>%
+  rename(corpus = corpus_id, session = transcript_id) %>%
+  left_join(select(kid_collapsed, corpus, subject, session, age)) %>%
+  ungroup(.) %>%
+  filter(complete.cases(.)) %>%
+  split(paste0(.$corpus, "-",.$subject, "-", .$age, "-"))  
+ 
+
+# create a function to measure lexical diversity with MTLD
+mtld_fun <- function(df) {
+  tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+  MTLD <- MTLD(tokenized_df)# measure LD
+  mtld <- data_frame(mtld = MTLD@MTLD$MTLD) # get LD measurement
+  length <- data_frame(length = MTLD@tt$num.tokens)  # get length meaasurement
+  merge(x = length,y = mtld, by = NULL) # combine LD and lenghth values
+}
+
+
+# measure speech of child and caregiver 
+kid_ld <- map(kid_tokenized, mtld_fun) %>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) %>%
+  filter(!mtld == as.numeric("inf")) %>%
+  filter(!length < 100) # MTLD yield inaccurate results if utterance length <100 words
+
+p_ld <- map(p_tokenized, mtld_fun) %>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) %>%
+  filter(!mtld == as.numeric("inf")) %>%
+  filter(!length < 100)
+
+# filter kids' data with more than 2 observeations
+mtld_filter <- function(df) {
+  nmtld <- aggregate(df$mtld, by = list(subject = df$subject),length)
+  nchild <- nmtld$subject[(nmtld$x > 2)]
+  df <- df %>%
+  filter(subject %in% nchild) %>%
+  group_by(subject)
+  
+  return(df)
+}
+
+
+all_data <- mtld_filter(kid_ld) %>%
+  left_join(y = mtld_filter(p_ld), by = c("corpus", "subject", "age")) %>%
+  ungroup() %>%
+  filter(complete.cases(.)) %>%
+  filter(age <100) %>%
+  rename(kid_mtld = mtld.x,
+         kid_length = length.x,
+         mom_mtld = mtld.y,
+         mom_length = length.y) %>%
+  left_join(y = rename(participants, subject = id))
+
+
+# write kid data to disk
+write_feather(all_data, "/Users/Yawen/Desktop/lexical diversity/trial6_childes/all_data.feather")
+```
+
+* Get Intercept and Slope 
+```{r, message=FALSE}
+all_data <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial6_childes/all_data.feather")
+
+# child's mtld as a function of age
+age_model <- lmer(kid_mtld ~ 1 + log(age) + (1+log(age)|subject), data = all_data)
+
+# get child's slope
+fixed_effects <- fixef(age_model) 
+ran_effects <- as_data_frame(ranef(age_model)$subject) 
+kid_effects <-  ran_effects %>%
+  mutate(subject = as.integer(rownames(ran_effects)),
+         kid_slope = `log(age)` + fixed_effects[2]) %>%
+  select(subject, kid_slope)
+
+# child's predicted mtld at 20 month as intercept
+kid_data <- kid_effects %>%
+  mutate(age = 20)%>%
+  mutate(kid_intercept = predict(age_model, newdata = .)) %>%
+  select(-c(age))
+
+# get mother's intercept at 20 month and slope
+mom_slope_model <- lmer(mom_mtld ~  1+ log(age) + (1 + log(age)|subject), data = all_data)
+
+mom_fix <- fixef(mom_slope_model) 
+mom_random <- as_data_frame(ranef(mom_slope_model)$subject) 
+mom_effects <-  mom_random %>%
+  mutate(subject = as.integer(rownames(mom_random)),
+         mom_slope = `log(age)` + mom_fix[2]) %>%
+  select(subject, mom_slope) %>%
+  mutate(age = 20) %>%
+  mutate(mom_intercept = predict(mom_slope_model, newdata = .))  %>%
+  select(-c(age))
+
+# merge child and mother data
+model_data <- participants %>%
+  rename(subject = id) %>%
+  left_join(x=mom_effects) %>%
+  left_join(x=kid_data)
+
+full_data <- all_data %>%
+  left_join(mom_effects) %>%
+  left_join(kid_data)
+```
+
+
+# Fitting models 
+```{r}
+# 1) residual as response
+age_lm <- lm(kid_mtld ~ log(age), data = full_data)
+
+full_data %>% 
+  mutate(residual = residuals(age_lm)) %>%
+  lm(residual ~ mom_intercept + mom_slope, data = .) %>%
+  summary()
+
+## when kid's intercept and slope are accounted for
+full_data %>% 
+  mutate(residual = residuals(age_lm)) %>%
+  lm(residual ~ kid_intercept + kid_slope, data = .) %>%
+  summary() 
+
+
+
+# 2) kid's intercept as response
+kid_model <- lm(kid_intercept ~ kid_slope + mom_intercept + mom_slope, data = model_data)
+summary(kid_model)
+
+
+## SES explains additional 45% variation in kid's intercept
+model_data %>%
+  filter(!is.na(ses)) %>%
+  lm(kid_intercept ~ kid_slope + mom_intercept + mom_slope + ses, data = .) %>%
+  summary() # 30 kids
+
+model_data %>%
+  filter(!is.na(sex)) %>%
+  lm(kid_intercept ~ kid_slope + mom_intercept + mom_slope + sex, data = .) %>%
+  summary() # 53 kids
+  
+
+
+# 3) kid's slope as response
+slope_model <- lm(kid_slope ~ kid_intercept + mom_slope + mom_intercept, data = model_data)
+summary(slope_model)
+
+## SES explains additional 25% variation in kid's slope
+model_data %>%
+  filter(!is.na(ses)) %>%
+  lm(kid_slope ~ kid_intercept + mom_intercept + mom_slope + ses, data = .) %>%
+  summary() # 30 kids
+
+model_data %>%
+  filter(!is.na(sex)) %>%
+  lm(kid_slope ~ kid_intercept + mom_intercept + mom_slope + sex, data = .) %>%
+  summary() # 53 kids
+
+
+
+# 4) mixed effects model
+full_model <-
+  lmer(scale(kid_mtld) ~ scale(log(age)) + scale(mom_slope) + 
+      scale(mom_intercept) + (scale(log(age)) |subject), data = full_data)
+  
+summary(full_model)
+```
