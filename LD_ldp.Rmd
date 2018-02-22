@@ -236,7 +236,7 @@ ggplot()+
 ```
 
 
-#### Get Estimated Intercept 
+
 ```{r, modeling, message=FALSE, echo=F, results='hide'}
 # Child's predicted mtld value at 20 month as intercept
 kid_data <- kid_effects %>%
@@ -298,7 +298,10 @@ stats::step(null2, scope=list(lower=null2, upper=full2), direction="both", na.rm
 # mother's language  
 summary(lm(kid_slope ~ mom_intercept + mom_slope, data = all_data))
 
-# mother's language + income
+# kid's intercept
+summary(lm(kid_slope ~  mom_intercept  + mom_slope+ kid_intercept , data = all_data))
+
+# demographic factors: income
 summary(lm(kid_slope ~  mom_intercept  + mom_slope+ income + kid_intercept, data = all_data))
 ```
 
