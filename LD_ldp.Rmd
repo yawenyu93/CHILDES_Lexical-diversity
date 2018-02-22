@@ -1,7 +1,7 @@
 ---
-title: "LDP_LD"
+title: "ldp_ld"
 author: "Yawen Yu and Dan Yurovsky"
-date: "12/5/2017"
+date: "2/22/2017"
 output:
   html_document: default
   pdf_document: default
