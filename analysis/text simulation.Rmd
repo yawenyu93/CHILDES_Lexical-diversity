@@ -1,0 +1,443 @@
+---
+title: "Text Simulation"
+author: 'Yawen Yu and Dan Yurovsky'
+date: '`r Sys.Date()`'
+output:
+  pdf_document: default
+  html_document: null
+  toc: no
+number_sections: no
+theme: lumen
+code_folding: hide
+toc_float: no
+---
+```{r, message=FALSE, warning=FALSE}
+# library required packages
+library(stringr)
+library(feather)
+library(koRpus)
+library(tidyverse)
+library(lme4)
+library(dplyr)
+library(sjPlot)
+library(corrplot)
+library(tidytext)
+library(tm)
+```
+
+```{r, warning=F, eval=F, echo=F, message=F}
+ldp <- src_sqlite("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp.db")
+
+# Get all utterances
+utter <- tbl(ldp, "utterances") %>%
+  collect() 
+
+# Get all participants
+subjs <- tbl(ldp, "subjects") %>%
+  collect() %>%
+  rename(subject = id)
+
+# Get visit data
+visits <- tbl(ldp, "visits") %>%
+  collect() %>%
+  select(subject, session, date, child_age, 
+         child_age_years, child_age_months,
+         income)
+
+# Get measures data
+measures <- tbl(ldp, "measures") %>%
+  collect() %>%
+  select(-last_update) %>%
+  left_join(y=visits, by = c("subject", "session")) %>%
+  mutate(ttr = word_types/word_tokens) 
+
+# remove unintelligible utterances
+murmur = c("xxx", "yyy", "yyy_yyy","---",
+           "s","f","t","n","d","b","e","c","o","v","h","r","k","j","g",
+           "p","x","z","u","v","m","l")
+utter_clean <- utter %>%
+  mutate(c_utts = tolower(c_utts),
+         c_utts = removeWords(c_utts, murmur),
+         c_utts = gsub("[^[:alnum:]]", " ", c_utts)) %>%
+   filter(!c_utts %in% murmur) %>%
+  select(c_utts)%>%
+  unnest_tokens(word, c_utts) %>%
+  rename(token = word)%>%
+  filter(complete.cases(.))
+
+# frequency of all words
+utter_clean %>%
+  count(token, sort =TRUE)%>%
+  View()
+```
+
+## Random Sampling Texts from LDP 
+```{r,eval=F, echo=F, message=F, warning=F}
+set.seed(10)
+# write a function to sample speech 
+sim_speech <- function(){
+  sample_orig <- sample_n(utter_clean, 3000)
+  
+  sample_rep <- sample_n(sample_orig, 600)%>%
+    rbind(sample_orig)%>% 
+    summarise(token = paste0(token, collapse = " ")) %>%
+    mutate(group = "20% rep")
+  
+  sample_new <- utter_clean %>%
+    filter(!token %in% sample_orig$token) %>%
+    sample_n(.,600)%>%
+    rbind(sample_orig)%>% 
+    summarise(token = paste0(token, collapse = " "))%>%
+    mutate(group = "20% new")
+  
+  sample_speech <- sample_orig %>% 
+    summarise(token = paste0(token, collapse = " ")) %>%
+    mutate(group = "baseline")%>%
+    rbind(sample_rep)%>%
+    rbind(sample_new)%>%
+    split(paste0(.$group, "-")) 
+  
+return(sample_speech)
+}
+
+
+# repplicate simulation 
+all_speech <- list()
+
+for(i in 1:100){
+  all_speech <- c(all_speech, sim_speech()) 
+}
+
+
+ld_1000 <- map(all_speech, ld_function)%>%
+      bind_rows(.id = "group") %>%
+      separate(col = group, into = c("group"), sep = "-") %>%
+      mutate(mtld = scale(mtld),
+         mattr = scale(mattr),
+         vocd = scale(vocd),
+         ttr = scale(ttr))%>%
+      rownames_to_column %>% 
+      gather(.,"measure","value",mtld, mattr, vocd, ttr) %>%
+      select(-c(rowname))
+ld_10000 <- ld_1000
+write_feather(ld_1000, "/Users/Yawen/Desktop/
+              lexical diversity/trial5_ldp/ld_1000.feather")
+```
+
+* Compare/Plot LD indices 
+```{r, message=F, warnings=F}
+ld_1000 <- read_feather("/Users/Yawen/Desktop/
+                        lexical diversity/trial5_ldp/ld_1000.feather")
+
+ggplot(ld_1000,aes(x=measure, y=value, color=measure)) +
+  facet_grid(~group)+
+  geom_boxplot()+
+  theme_classic()+
+  labs(title = "Compare Lexical Diversity Indices on Simulated Texts", 
+       subtitle = "baseline sample: 3000 words",
+       y = "lexical diversity")
+
+ggplot(ld_1000, aes(x=value))+
+  geom_histogram()+
+  facet_grid(group~measure)+
+  theme_classic()+
+  labs(title = "Compare Lexical Diversity Indices on Simulated Texts", 
+       subtitle = "baseline sample: 3000 words",
+       y = "lexical diversity")
+
+```
+
+## Random Sampling + 15 Arbitrary Words 
+```{r, warning=F, eval=F, echo=F, message=F}
+# write a sampling function
+sim_speech <- function(){
+sample_speech <- sample_n(utter_clean,300) # baseline text
+
+## place 15 high-frequency words in a repetitive order
+sample_rep <- data.frame(token = c("i","i","i","no","no","no","you","you","you",
+                                   "the","the","the","it","it","it"))%>%
+  rbind(sample_speech)%>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group ="repetitive")
+
+## place 15 high-frequency words in a random order
+sample_rep2 <- data.frame(token = c("i","you","it","the","no","it","you","to",
+                                    "i","the","no","you","i","it","no"))%>%
+  rbind(sample_speech)%>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group = "random")
+
+
+sample_sum <- sample_speech %>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group = "baseline")%>%
+  rbind(sample_rep)%>%
+  rbind(sample_rep2)%>%
+  split(paste0(.$group, "-")) }
+
+
+# repplicate simulation 
+all_speech <- list()
+
+for(i in 1:100){
+  all_speech <- c(all_speech, sim_speech()) 
+  }
+
+# write a function to measure ld
+ld_function <- function(df){
+  sample_token <- koRpus::tokenize(df$token, format = "obj", 
+                                   lang = "en", tag = TRUE)
+
+  sample_ld <- data_frame(mtld = MTLD(sample_token)@MTLD$MTLD,
+                        vocd = HDD(sample_token)@HDD$HDD,
+                        ttr = TTR(sample_token)@TTR,
+                        mattr = MATTR(sample_token)@MATTR$MATTR)
+  }
+
+small_ld <- map(all_speech, ld_function) %>%
+      bind_rows(.id = "group") %>%
+      separate(col = group, into = c("group"), sep = "-") %>%
+      mutate(mtld = scale(mtld),
+         mattr = scale(mattr),
+         vocd = scale(vocd),
+         ttr = scale(ttr))%>%
+      rownames_to_column %>% 
+      gather(.,"measure","value",mtld, mattr, vocd, ttr) %>%
+      select(-c(rowname))
+
+````
+
+
+```{r,eval=F, echo=F, message=F, warning=F}
+# write a function to sample texts
+sim_speech <- function(){
+sample_speech <- sample_n(utter_clean,300) # baseline text with 300 tokens
+
+# place 15 low-frequency words in a repetitive order
+sample_rep <- data.frame(token = c("treatment","treatment","treatment",
+                                   "clog","clog","clog","trustworthy",
+                                   "trustworthy","trustworthy","thief",
+                                   "thief","thief","tofu","tofu","tofu"))%>%
+  rbind(sample_speech)%>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group ="repetitive")
+
+# place 15 low-frequency words in a random order
+sample_rep2 <- data.frame(token = c("treatment","tofu","trustworthy",
+                                    "clog","thief","trustworthy","treatment",
+                                    "tofu","clog","trustworthy","thief",
+                                    "tofu","treatment","clog","thief"))%>%
+  rbind(sample_speech)%>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group = "random")
+
+
+sample_sum <- sample_speech %>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group = "baseline")%>%
+  rbind(sample_rep)%>%
+  rbind(sample_rep2)%>%
+  split(paste0(.$group, "-")) }
+
+
+# repplicate simulation 
+all_speech <- list()
+
+for(i in 1:100){
+  all_speech <- c(all_speech, sim_speech()) 
+  }
+
+
+# measure ld
+small_ld2 <- map(all_speech, ld_function) %>%
+      bind_rows(.id = "group") %>%
+      separate(col = group, into = c("group"), sep = "-") %>%
+      mutate(mtld = scale(mtld),
+         mattr = scale(mattr),
+         vocd = scale(vocd),
+         ttr = scale(ttr))%>%
+      rownames_to_column %>% 
+      gather(.,"measure","value",mtld, mattr, vocd, ttr) %>%
+      select(-c(rowname))%>%
+      mutate(text = "low frequency words")
+
+
+small_all <- small_ld  %>%
+  mutate(text = "high frequency words")%>%
+  rbind(small_ld2)
+```
+
+
+```{r, eval=F, echo=F, warning=F, message=F}
+###### Larger samples #####
+# random sampling + 15 high-frequency words
+sim_speech <- function(){
+sample_speech <- sample_n(utter_clean,3000) # baseline text with 3000 tokens
+
+sample_freq <- sample_speech %>% 
+  count(token, sort =TRUE) # word frequency
+
+sample_rep <- data.frame(token = c("i","i","i","no","no","no","you",
+                                   "you","you","the","the","the","it","it","it"))%>%
+  rbind(sample_speech)%>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group ="repetitive")
+
+sample_rep2 <- data.frame(token = c("i","you","it","the","no","it","you",
+                                    "to","i","the","no","you","i","it","no"))%>%
+  rbind(sample_speech)%>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group = "random")
+
+
+sample_sum <- sample_speech %>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group = "baseline")%>%
+  rbind(sample_rep)%>%
+  rbind(sample_rep2)%>%
+  split(paste0(.$group, "-")) }
+
+
+# repplicate simulation 
+all_speech <- list()
+
+for(i in 1:100){
+  all_speech <- c(all_speech, sim_speech()) 
+  }
+
+large_ld <- map(all_speech, ld_function) %>%
+      bind_rows(.id = "group") %>%
+      separate(col = group, into = c("group"), sep = "-") %>%
+      mutate(mtld = scale(mtld),
+         mattr = scale(mattr),
+         vocd = scale(vocd),
+         ttr = scale(ttr))%>%
+      rownames_to_column %>% 
+      gather(.,"measure","value",mtld, mattr, vocd, ttr) %>%
+      select(-c(rowname))
+
+
+# random sampling + 15 low-frequency words
+sim_speech <- function(){
+sample_speech <- sample_n(utter_clean,3000) # baseline text
+
+sample_rep <- data.frame(token = c("treatment","treatment","treatment","clog",
+                                   "clog","clog","trustworthy","trustworthy","trustworthy",
+                                   "thief","thief","thief","tofu","tofu","tofu"))%>%
+  rbind(sample_speech)%>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group ="repetitive")
+
+sample_rep2 <- data.frame(token = c("treatment","tofu","trustworthy",
+                                    "clog","thief","trustworthy","treatment","tofu",
+                                    "clog","trustworthy","thief","tofu",
+                                    "treatment","clog","thief"))%>%
+  rbind(sample_speech)%>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group = "random")
+
+
+sample_sum <- sample_speech %>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group = "baseline")%>%
+  rbind(sample_rep)%>%
+  rbind(sample_rep2)%>%
+  split(paste0(.$group, "-")) }
+
+# repplicate simulation 
+all_speech <- list()
+
+for(i in 1:100){
+  all_speech <- c(all_speech, sim_speech()) 
+  }
+
+# measure ld
+large_ld2 <-map(all_speech, ld_function) %>%
+      bind_rows(.id = "group") %>%
+      separate(col = group, into = c("group"), sep = "-") %>%
+      mutate(mtld = scale(mtld),
+         mattr = scale(mattr),
+         vocd = scale(vocd),
+         ttr = scale(ttr))%>%
+      rownames_to_column %>% 
+      gather(.,"measure","value",mtld, mattr, vocd, ttr) %>%
+      select(-c(rowname))%>%
+      mutate(text = "low frequency words")
+
+# merge data
+large_all <- large_ld  %>%
+  mutate(text = "high frequency words")%>%
+  rbind(large_ld2) %>%
+  mutate(size = "large") 
+
+all_ld <- small_all %>%
+  mutate(size = "small")%>%
+  rbind(large_all)
+
+write_feather(all_ld, "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/all_ld.feather")
+```
+
+```{r, message=F, warning=FALSE}
+all_ld <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/all_ld.feather")
+
+# plot
+all_ld %>%
+  filter(measure == "vocd" | measure == "mtld")%>%
+  ggplot()+
+  geom_boxplot(aes(x=group, y=value, color=group)) +
+  facet_grid(measure~size)+
+  theme_classic()+
+  labs(title = "Compare vocd-D & MTLD on Simulated Texts",
+       subtitle = "different word orders",
+       y = "lexical diversity (scale)")
+
+all_ld %>%
+  filter(measure == "vocd" | measure == "mtld")%>%
+  ggplot()+
+  geom_boxplot(aes(x=group, y=value, color=group)) +
+  facet_grid(measure~text)+
+  theme_classic()+
+  labs(title = "Compare vocd-D & MTLD on Simulated Texts",
+       subtitle = "different word frequencies",
+       y = "lexical diversity (scale)")
+
+all_ld %>%
+  filter(measure == "mattr" | measure == "ttr")%>%
+  ggplot()+
+  geom_boxplot(aes(x=group, y=value, color=group)) +
+  facet_grid(measure~size)+
+  theme_classic()+
+  labs(title = "Compare MATTR & TTR on Simulated Texts",
+       y = "lexical diversity (scale)")
+
+```
+
+###Sensitivity to Sentence Structure VS. Vocabulary Diversity
+```{r}
+# simple text sample with more complex sentence structure
+complex_text <- data_frame(token = c("sentence structure is incredibly important to the way we communicate the ability to effectively combine a complete sentence or independent clause with a dependent clause comes to native English speakers with time and experience to easily form a complex sentence is vital to basic business communications and human interactions any basic English writing course teaches students that there are four main types of sentence structures these four types are simple compound complex and compound-complex understanding the difference between an independent clause and a complex sentence will help you tremendously while trying to learn how to properly structure sentences in English the ability to effectively combine sentences is vital to success in life and in business whether you are new to learning about sentence structure or just need to brush up on the basics an American English writing course like this one through udemy can help you learn to better structure your sentences and get your point across with a minimum of effort and confusion those of us who communicate"))%>%
+  mutate(token = tolower(token))%>%
+  unnest_tokens(word, token)%>%
+  rename(token = word)%>%
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group = "complex") #97 word types out of 170 tokens
+
+# simple text sample with less complex sentence structure
+simple_text <- data_frame(token = c("once upon a time there was a dear little girl she was loved by every one who looked at her but most of all by her grandmother and there was nothing that she would not have given to the child once she gave her a little cap of red velvet which suited her so well that she would never wear anything else so she was always called little red riding hood one day her mother said to her come little red riding hood here is a piece of cake and a bottle of wine take them to your grandmother she is ill and weak and they will do her good set out before it gets hot and when you are going walk nicely and quietly and do not run off the path or you may fall and break the bottle and then your grandmother will get nothing and when you go into her room don't forget to say good morning and don't peep into every corner before you do it"))%>%
+  mutate(token = tolower(token))%>%
+  unnest_tokens(word, token)%>%
+  rename(token = word) %>% 
+  summarise(token = paste0(token, collapse = " "))%>%
+  mutate(group = "simple") #99 word types out of 170 tokens
+
+# compare LD results
+all_text <- complex_text %>%
+  rbind(simple_text)%>% 
+  split(paste0(.$group, "-"))%>%
+  map(., ld_function) %>%
+      bind_rows(.id = "group") %>%
+      separate(col = group, into = c("group"), sep = "-") %>%
+      rownames_to_column %>% 
+      gather(.,"measure","value",mtld, mattr, vocd, ttr) %>%
+      select(-c(rowname))
+```
