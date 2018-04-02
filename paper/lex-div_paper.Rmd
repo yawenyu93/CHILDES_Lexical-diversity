@@ -1,0 +1,93 @@
+---
+title             : "Lexical Diversity and Vocabulary Development"
+shorttitle        : "Lexical Diversity"
+
+author: 
+  - name          : "Yawen Yu"
+    affiliation   : "1"
+    corresponding : yes    # Define only one corresponding author
+    address       : "Postal address"
+    email         : "shellyyu@uchicago.edu"
+  - name          : "Daniel Yurovsky"
+    affiliation   : "2"
+
+
+affiliation:
+  - id            : "1"
+    institution   : "University of California, Los Angeles"
+  - id            : "2"
+    institution   : "University of Chicago"
+
+author_note: |
+
+  Please address corresponsdence
+
+abstract: |
+  Enter abstract here. Each new line herein must be indented, like this line.
+  
+keywords          : "cognitive development; language acquisition; corpus analysis"
+wordcount         : "X"
+
+bibliography      : ["lexdiv.bib"]
+
+figsintext        : yes
+figurelist        : no
+tablelist         : no
+footnotelist      : no
+lineno            : yes
+mask              : no
+
+class             : "man"
+output            : papaja::apa6_pdf
+---
+
+```{r load_packages, include = FALSE}
+library(papaja)
+library(tidyverse)
+
+```
+
+```{r analysis_preferences}
+# Seed for random number generation
+set.seed(42)
+```
+
+
+
+# Methods
+We report how we determined our sample size, all data exclusions (if any), all manipulations, and all measures in the study. <!-- 21-word solution (Simmons, Nelson & Simonsohn, 2012; retrieved from http://ssrn.com/abstract=2160588) -->
+
+## Participants
+
+## Material
+
+## Procedure
+
+## Data analysis
+We used  for all our analyses.
+
+
+# Results
+
+# Discussion
+
+# Acknowledgements
+
+We are grateful to the members of the Communication and Learning Lab for feedback on this project and manuscripti. This work was supported by a James S. McDonnell Foundation Scholar Award to DY. 
+
+
+\newpage
+
+# References
+
+
+```{r}
+# References will be generated automatically by Pandoc and included here.
+# The following code is some latex to format the bibliography. Do not remove it.
+```
+
+\setlength{\parindent}{-0.5in}
+\setlength{\leftskip}{0.5in}
+
+<div id = "refs"></div>
+\noindent
