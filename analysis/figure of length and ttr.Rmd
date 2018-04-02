@@ -1,0 +1,492 @@
+---
+title: "Figure of ttr and text length"
+author: "Yawen Yu"
+date: "3/29/2018"
+output: html_document
+---
+#### Install packages
+```{r, message=F, warning=F}
+library(tidyverse)
+library(tidytext)
+library(feather)
+library(koRpus)
+library(childesr)
+```
+
+
+```{r,eval=F, echo=FALSE}
+# load CHILDES-US data
+kid_collapsed <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial6_childes/kid_collapsed.feather")
+childes_intercept <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/childes_intercept.feather")
+
+# get children's id
+subject_id <- unique(childes_intercept$subject)
+
+word <- kid_collapsed %>%
+  filter(subject %in% subject_id)%>%
+  filter(age >= 14 & age <=58)%>%
+  unnest_tokens(word, utts) %>%
+  rename(token = word) 
+
+# get tokens successevily of all children
+us_word <- data.frame()
+
+for(i in subject_id){
+      
+    word_subset <- word %>%
+        filter(subject == i) 
+    
+  for(j in 1:300){
+      
+    word_sample <- data.frame(subject = i,
+                              token = head(word_subset$token, n = j)) %>%
+    summarise(token = paste0(token, collapse = " ")) %>%
+      mutate(subject = i,
+             length = j)
+ 
+    us_word <- us_word %>%
+      rbind(word_sample)
+  }
+}
+
+# tokenize all texts
+us_token <- us_word %>%
+    split(paste0(.$subject, "-",.$length, "-")) 
+
+
+# create functions to measure Lexical diversity
+mtld_fun <- function(df) {
+  tokenized_df <- koRpus::tokenize(df$token, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+  MTLD <- MTLD(tokenized_df)# measure LD
+  mtld <- data_frame(mtld = MTLD@MTLD$MTLD) # get LD measurement
+}
+
+mattr_fun <- function(df) {
+  tokenized_df <- koRpus::tokenize(df$token, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+  MATTR <- MATTR(tokenized_df, window = 50)# measure LD
+  mattr <- data_frame(mattr = MATTR@MATTR$MATTR) # get LD measurement
+}
+
+vocd_fun <- function(df) {
+  tokenized_df <- koRpus::tokenize(df$token, format = "obj",lang = "en", tag = TRUE) #tokenize texts
+  HDD <- HDD(tokenized_df)# measure LD
+  vocd <- data_frame(vocd = HDD@HDD$HDD) # get LD measurement
+}
+
+
+# measure LD
+us_sample_mtld <- map(us_token, mtld_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "us_mtld",
+         value = mtld,
+         age = "20mon") %>%
+  filter(!value == "Inf")%>%
+  mutate(value = scale(value)) %>%
+  select(-mtld)
+
+us_sample_mattr <- map(us_token, mattr_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "us_mattr",
+         value = mattr,
+         age = "20mon") %>%
+  filter(!value == "Inf")%>%
+  mutate(value = scale(value)) %>%
+  select(-mattr)
+
+us_sample_vocd <- map(us_token, vocd_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "us_vocd",
+         value = vocd,
+         age = "20mon")%>%
+  filter(!value == "Inf")%>%
+  mutate(value = scale(value)) %>%
+  select(-vocd)
+
+## filter data after 40 months
+word_40 <- word %>%
+  filter(age >= 40)
+
+subject_id <- unique(word_40$subject)
+
+# get tokens successevily of all children
+us_word_40 <- data.frame()
+
+for(i in subject_id){
+      
+    word_subset <- word_40 %>%
+        filter(subject == i) 
+    
+  for(j in 1:300){
+      
+    word_sample <- data.frame(subject = i,
+                              token = head(word_subset$token, n = j)) %>%
+    summarise(token = paste0(token, collapse = " ")) %>%
+      mutate(subject = i,
+             length = j)
+ 
+    us_word_40 <- us_word_40 %>%
+      rbind(word_sample)
+  }
+}
+
+# tokenize all texts
+us_token_40 <- us_word_40 %>%
+    split(paste0(.$subject, "-",.$length, "-")) 
+
+
+# measure LD
+us_sample_mtld_40 <- map(us_token_40, mtld_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "us_mtld",
+         value = mtld,
+         age = "40mon") %>%
+  filter(!mtld == "Inf")%>%
+  mutate(value = scale(mtld)) %>%
+  select(-mtld)
+
+us_sample_mattr_40 <- map(us_token_40, mattr_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "us_mattr",
+         value = mattr,
+         age = "40mon") %>%
+  filter(!mattr == "Inf")%>%
+  mutate(value = scale(mattr)) %>%
+  select(-mattr)
+
+us_sample_vocd_40 <- map(us_token_40, vocd_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "us_vocd",
+         value = vocd,
+         age = "40mon")%>%
+  mutate(value = scale(vocd)) %>%
+  select(-vocd)
+
+
+# merge data
+us_measure <- us_sample_mattr %>%
+  rbind(us_sample_mtld)%>%
+  rbind(us_sample_vocd) %>%
+  rbind(us_sample_mattr_40)%>%
+  rbind(us_sample_mtld_40)%>%
+  rbind(us_sample_vocd_40)
+
+write_feather(us_measure,"/Users/Yawen/Desktop/lexical diversity/trial6_childes/us_measure.feather" )
+```
+
+
+```{r, eval=F, echo=F}
+# Load CHILDES-UK data
+uk_tokens <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial6_childes/uk_tokens.feather")
+
+uk_id <- unique(uk_tokens$subject)
+
+uk_word <- uk_tokens %>%
+  filter(age >= 14 & age <=58) %>%
+  unnest_tokens(word, utts) %>%
+  rename(token = word) 
+
+# get first 300 tokens successevily of all children 
+all_word_uk <- data.frame()
+
+for(i in uk_id){
+      
+    word_subset <- uk_word %>%
+        filter(subject == i) 
+    
+  for(j in 1:300){
+      
+    word_sample <- data.frame(subject = i,
+                              token = head(word_subset$token, n = j)) %>%
+    summarise(token = paste0(token, collapse = " ")) %>%
+      mutate(subject = i,
+             length = j)
+ 
+    all_word_uk <- all_word_uk %>%
+      rbind(word_sample)
+  }
+}
+
+# tokenize all texts
+all_token_uk <- all_word_uk %>%
+    split(paste0(.$subject, "-",.$length, "-")) 
+
+
+# measure LD
+uk_sample_mtld <- map(all_token_uk, mtld_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "uk_mtld",
+         age = "20mon")%>%
+  filter(!value == "Inf")%>%
+  mutate(value = scale(value)) %>%
+  select(-mtld)
+
+uk_sample_mattr <- map(all_token_uk, mattr_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "uk_mattr",
+         age = "20mon")%>%
+  filter(!value == "Inf")%>%
+  mutate(value = scale(value)) %>%
+  select(-mattr)
+
+uk_sample_vocd <- map(all_token_uk, vocd_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "uk_vocd",
+         age = "20mon")%>%
+  filter(!value == "Inf")%>%
+  mutate(value = scale(value)) %>%
+  select(-vocd)
+
+
+# filter UK data after 40 months
+uk_word_40 <- uk_word %>%
+  filter(age >= 40)
+
+uk_id <- unique(uk_word_40$subject)
+
+## get first 300 tokens from age 40 months
+all_word_uk_40 <- data.frame()
+
+for(i in uk_id){
+      
+    word_subset <- uk_word_40 %>%
+        filter(subject == i) 
+    
+  for(j in 1:300){
+      
+    word_sample <- data.frame(subject = i,
+                              token = head(word_subset$token, n = j)) %>%
+    summarise(token = paste0(token, collapse = " ")) %>%
+      mutate(subject = i,
+             length = j)
+ 
+    all_word_uk_40 <- all_word_uk_40 %>%
+      rbind(word_sample)
+  }
+}
+
+# tokenize all texts
+all_token_uk_40 <- all_word_uk_40 %>%
+    split(paste0(.$subject, "-",.$length, "-")) 
+
+
+# measure LD
+uk_sample_mtld_40 <- map(all_token_uk_40, mtld_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "uk_mtld",
+         age = "40mon")%>%
+  filter(!mtld == "Inf")%>%
+  mutate(value = scale(mtld)) %>%
+  select(-mtld)
+
+uk_sample_mattr_40 <- map(all_token_uk_40, mattr_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "uk_mattr",
+         age = "40mon")%>%
+  filter(!mattr == "Inf")%>%
+  mutate(value = scale(mattr)) %>%
+  select(-mattr)
+
+uk_sample_vocd_40 <- map(all_token_uk_40, vocd_fun) %>% 
+  bind_rows(.id = "length") %>%
+  separate(col = length, into = c("subject","length"), sep = "-") %>%
+  mutate(length = as.numeric(length),
+         subject = as.numeric(subject),
+         group = "uk_vocd",
+         age = "40mon")%>%
+  mutate(value = scale(vocd)) %>%
+  select(-vocd)
+
+# merge data
+uk_measure <- uk_sample_mattr %>%
+  rbind(uk_sample_mtld)%>%
+  rbind(uk_sample_vocd)%>%
+  rbind(uk_sample_mattr_40)%>%
+  rbind(uk_sample_mtld_40)%>%
+  rbind(uk_sample_vocd_40)
+
+
+
+write_feather(uk_measure,"/Users/Yawen/Desktop/lexical diversity/trial6_childes/uk_measure.feather" )
+```
+
+
+#### Plot
+```{r, message=F, warning=F}
+# merge UK & US data
+uk_measure <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial6_childes/uk_measure.feather")
+us_measure <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial6_childes/us_measure.feather")
+
+all_measure <- uk_measure %>%
+  rbind(us_measure)
+
+
+
+# compare US & UK data
+## MTLD
+all_measure %>%
+  filter(age == "20mon")%>%
+  filter(group == "us_mtld" | group == "uk_mtld")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(~group)+
+  theme_classic()+
+  labs(title = "MTLD and points of stabilization",
+       subtitle = "14~17 month")
+
+all_measure %>%
+  filter(age == "40mon")%>%
+  filter(group == "us_mtld" | group == "uk_mtld")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(~group)+
+  theme_classic()+
+  labs(title = "MTLD and points of stabilization",
+       subtitle = "40 month")
+
+## MATTR
+all_measure %>%
+  filter(age == "20mon")%>%
+  filter(group == "us_mattr" | group == "uk_mattr")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(~group)+
+  theme_classic()+
+  labs(title = "MATTR and points of stabilization",
+       subtitle = "14~17 month")
+
+all_measure %>%
+  filter(age == "40mon")%>%
+  filter(group == "us_mattr" | group == "uk_mattr")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(~group)+
+  theme_classic()+
+  labs(title = "MATTR and points of stabilization",
+       subtitle = "40 month")
+
+## vocd-D
+all_measure %>%
+  filter(age == "20mon")%>%
+  filter(group == "us_vocd" | group == "uk_vocd")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(~group)+
+  theme_classic()+
+  labs(title = "vocd-D and points of stabilization",
+       subtitle = "14~17 month")
+
+all_measure %>%
+  filter(age == "40mon")%>%
+  filter(group == "us_vocd" | group == "uk_vocd")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(~group)+
+  theme_classic()+
+  labs(title = "vocd-D and points of stabilization",
+       subtitle = "40 month")
+
+
+
+# Compare all methods 
+all_measure %>%
+  filter(age == "20mon")%>%
+  filter(group == "us_mattr" | group == "us_mtld" | group == "us_vocd")%>%
+  filter(length > 50)%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(~group)+
+  theme_classic()+
+  labs(title = "CHILDES-US: All methods and their points of stabilization",
+       subtitle = "14~17 month")
+
+all_measure %>%
+  filter(age == "40mon")%>%
+  filter(group == "us_mattr" | group == "us_mtld" | group == "us_vocd")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(~group)+
+  theme_classic()+
+  labs(title = "CHILDES-US: All methods and their points of stabilization",
+       subtitle = "40 month")
+
+all_measure %>%
+  filter(age == "20mon")%>%
+  filter(group == "uk_mattr" | group == "uk_mtld" | group == "uk_vocd")%>%
+  filter(length > 50)%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(~group)+
+  theme_classic()+
+  labs(title = "CHILDES-UK: All methods and their points of stabilization",
+       subtitle = "14~17 month")
+
+all_measure %>%
+  filter(age == "40mon")%>%
+  filter(group == "uk_mattr" | group == "uk_mtld" | group == "uk_vocd")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(~group)+
+  theme_classic()+
+  labs(title = "CHILDES-UK: All methods and their points of stabilization",
+       subtitle = "40 month")
+
+
+
+## Compare same method at diff ages
+all_measure %>%
+  filter(group == "us_mtld" | group == "uk_mtld")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(group~age)+
+  theme_classic()+
+  labs(title = "MTLD and points of stabilization")
+
+all_measure %>%
+  filter(group == "us_mattr" | group == "uk_mattr")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(group~age)+
+  theme_classic()+
+  labs(title = "MATTR and points of stabilization")
+
+all_measure %>%
+  filter(group == "us_vocd" | group == "uk_vocd")%>%
+  ggplot(., aes(x = length, y = value, color = group))+
+  geom_smooth(se=F)+
+  facet_grid(group~age)+
+  theme_classic()+
+  labs(title = "vocd-D and points of stabilization")
+```

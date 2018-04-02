@@ -23,6 +23,7 @@ library(sjPlot)
 library(corrplot)
 library(tidytext)
 library(tm)
+library(stringr)
 ```
 
 ```{r, warning=F, eval=F, echo=F, message=F}
@@ -104,10 +105,20 @@ return(sample_speech)
 # repplicate simulation 
 all_speech <- list()
 
-for(i in 1:100){
+for(i in 1:10){
   all_speech <- c(all_speech, sim_speech()) 
 }
 
+# write a function to measure ld
+ld_function <- function(df){
+  sample_token <- koRpus::tokenize(df$token, format = "obj", 
+                                   lang = "en", tag = TRUE)
+
+  sample_ld <- data_frame(mtld = MTLD(sample_token)@MTLD$MTLD,
+                        vocd = HDD(sample_token)@HDD$HDD,
+                        ttr = TTR(sample_token)@TTR,
+                        mattr = MATTR(sample_token)@MATTR$MATTR)
+}
 
 ld_1000 <- map(all_speech, ld_function)%>%
       bind_rows(.id = "group") %>%
@@ -181,17 +192,6 @@ all_speech <- list()
 
 for(i in 1:100){
   all_speech <- c(all_speech, sim_speech()) 
-  }
-
-# write a function to measure ld
-ld_function <- function(df){
-  sample_token <- koRpus::tokenize(df$token, format = "obj", 
-                                   lang = "en", tag = TRUE)
-
-  sample_ld <- data_frame(mtld = MTLD(sample_token)@MTLD$MTLD,
-                        vocd = HDD(sample_token)@HDD$HDD,
-                        ttr = TTR(sample_token)@TTR,
-                        mattr = MATTR(sample_token)@MATTR$MATTR)
   }
 
 small_ld <- map(all_speech, ld_function) %>%

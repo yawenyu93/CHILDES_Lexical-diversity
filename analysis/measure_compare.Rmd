@@ -110,17 +110,14 @@ childes_all <- mtld_data %>%
   left_join(vocd_data) %>%
   left_join(ttr_data)
 
-write_feather(childes_all,"/Users/Yawen/Desktop/
-              lexical diversity/trial5_ldp/childes_all.feather")
+write_feather(childes_all,"/Users/Yawen/Desktop/lexical diversity/trial5_ldp/childes_all.feather")
 ```
 
 #### Compare by Plotting Growth Curve
 ```{r, message=F, warning=F}
-childes_all <- read_feather("/Users/Yawen/Desktop/
-                            lexical diversity/trial5_ldp/childes_all.feather") %>%
+childes_all <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/childes_all.feather") %>%
   filter(age >=14 & age <=58) # align age range with that of LDP
-ldp_all <- read_feather("/Users/Yawen/Desktop/
-                        lexical diversity/trial5_ldp/ldp_all.feather")
+ldp_all <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_all.feather")
 
 childes_all %>%
   ggplot()+
@@ -129,7 +126,7 @@ childes_all %>%
   geom_smooth(aes(x=age,y=scale(kid_vocd), color="vocd"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_mtld), color="mtld"), se=F)+
   theme_classic()+
-  labs(title = "Growth Curve of CHILDES Children", 
+  labs(title = "CHILDES: Growth Curve of Lexical Diversity", 
        subtitle = "14 ~ 58 Months",
        y = "lexical diversity (scaled)")
 
@@ -389,6 +386,8 @@ ldp_intercept <- kid_cdi %>%
   left_join(mom_vocd) %>%
   left_join(mom_ttr)%>%
   left_join(kid_sen)
+
+write_feather(ldp_intercept, "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_intercept.feather" )
 ```
 
 *Get parameters of children and mother in CHILDES data
@@ -513,7 +512,10 @@ childes_intercept <- kid_mtld %>%
   left_join(mom_mtld)%>%
   left_join(mom_mattr) %>%
   left_join(mom_vocd) %>%
-  left_join(mom_ttr)
+  left_join(mom_ttr)%>%
+  filter(complete.cases(.))
+
+write_feather(childes_intercept, "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/childes_intercept.feather" )
 ```
 
 #### Compare by Variance of parameters
