@@ -7,7 +7,7 @@ output:
   pdf_document: default
 ---
 * library required packages
-```{r, library, message=F,results='hide', warning=FALSE, echo=F}
+```{r, library, message=F, results='hide', warning=FALSE}
 # Library required packages
 library(feather)
 library(koRpus)
@@ -21,24 +21,20 @@ library(corrplot)
 ```
 
 * get information of all participants 
-```{r, message=FALSE, echo=FALSE}
+```{r, message=F, results='hide', warning=FALSE}
 participants <- get_participants(collection = NULL,
 corpus = NULL, child = NULL, role = NULL)
 ```
 
-* Clean Data and Assess Lexical Diversity 
-```{r, eval=F, message=FALSE, echo=FALSE}
-# get utterances 
-utter <- get_utterances(
-collection = NULL, corpus = NULL,
-child = NULL, role = NULL) %>%
-  filter(language == "eng")
-
+* Clean American Data  
+```{r, message=F, results='hide', warning=FALSE}
+# get utterances (North American English)
+utter_us <- get_utterances(collection = "Eng-NA", corpus = NULL) 
 
 # remove unintelligible utterances
 murmur = c("xxx", "yyy", "yyy_yyy","---")
 
-utter_kid <- utter %>%
+utter_kid_us <- utter_us %>%
   filter(speaker_code == "CHI") %>% 
   filter(!stem %in% murmur) %>%
   mutate(stem = removeWords(stem, murmur),
@@ -46,7 +42,7 @@ utter_kid <- utter %>%
          stem = tolower(stem)) %>%
   filter(!grepl("^\\s*$", stem)) 
 
-utter_p <- utter %>%
+utter_p_us <- utter_us %>%
   filter(speaker_code == c("MOT","FAT")) %>%
   filter(!stem %in% murmur) %>%
   mutate(stem = removeWords(stem, murmur),
@@ -56,7 +52,7 @@ utter_p <- utter %>%
  
 
 # collapse utterances of child at one month to one row
-kid_collapsed <- utter_kid %>%
+kid_collapsed_us <- utter_kid_us %>%
   filter(corpus_id == corpus_id) %>%
   filter(speaker_id == speaker_id) %>%
   filter(target_child_age == target_child_age) %>%
@@ -66,25 +62,24 @@ kid_collapsed <- utter_kid %>%
   mutate(age = floor(target_child_age/30.5)) %>%
   ungroup(.)%>%
   select(-target_child_age)%>%
-  rename(corpus = corpus_id, subject = speaker_id,
-         session = transcript_id) %>%
-  filter(!subject == 5221) %>% # utterance is coded in an unintelligible way
-  filter(!corpus %in% c(84,90,87,80,96,93))%>% # drop corpus of children with language disorder
-  filter(!corpus %in% c(192,190,189,187,185,181,184,82)) # drop UK data
+  rename(corpus = corpus_id, 
+         subject = speaker_id,
+         session = transcript_id) 
+
 
 # write kid's speech to disk
-write_feather(kid_collapsed, "/Users/Yawen/Desktop/
-              lexical diversity/trial6_childes/kid_collapsed.feather")
+write_feather(kid_collapsed_us, "/Users/Yawen/Desktop/lexical diversity/trial6_childes/kid_collapsed_us.feather")
+
 
 # tokenize child's speech 
-kid_tokenized <- kid_collapsed %>%  
+kid_tokenized_us <- kid_collapsed_us %>%  
   ungroup(.) %>%
   filter(complete.cases(.)) %>%
   split(paste0(.$corpus, "-",.$subject, "-", .$age, "-"))  
  
 
 # tokenize utterances of caregiver 
-p_tokenized <- utter_p %>%
+p_tokenized_us <- utter_p_us %>%
   filter(corpus_id == corpus_id) %>%
   filter(transcript_id == transcript_id) %>%
   filter(target_child_age == target_child_age) %>%
@@ -93,16 +88,14 @@ p_tokenized <- utter_p %>%
   mutate(age = floor(target_child_age/30.5)) %>%
   select(-target_child_age) %>%
   rename(corpus = corpus_id, session = transcript_id) %>%
-  left_join(select(kid_collapsed, corpus, subject, session, age)) %>%
-  filter(!corpus %in% c(84,90,87,80,96,93))%>%
-  filter(!corpus %in% c(192,190,189,187,185,181,184,82))%>%
+  left_join(select(kid_collapsed_us, corpus, subject, session, age)) %>%
   ungroup(.) %>%
   filter(complete.cases(.)) %>%
   split(paste0(.$corpus, "-",.$subject, "-", .$age, "-")) 
 ```
 
 *Measure lexical diversity with MTLD
-```{r}
+```{r, message=F, results='hide', warning=FALSE}
 # create functions to measure lexical diversity with MTLD
 mtld_fun <- function(df) {
   tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
@@ -114,23 +107,21 @@ mtld_fun <- function(df) {
 
 
 # measure speech of child and caregiver 
-kid_mtld <- map(kid_tokenized, mtld_fun) %>% 
+kid_mtld_us <- map(kid_tokenized_us, mtld_fun) %>% 
   bind_rows(.id = "subject") %>%
   separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
   mutate(corpus = as.numeric(corpus),
          subject = as.numeric(subject),
          age = as.numeric(age)) %>%
-  filter(!mtld == as.numeric("inf")) %>%
-  filter(!length < 100) # MTLD yield inaccurate results if utterance length <100 words
+  filter(!mtld == as.numeric("inf")) 
 
-p_mtld <- map(p_tokenized, mtld_fun) %>% 
+p_mtld_us <- map(p_tokenized_us, mtld_fun) %>% 
   bind_rows(.id = "subject") %>%
   separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
   mutate(corpus = as.numeric(corpus),
          subject = as.numeric(subject),
          age = as.numeric(age)) %>%
-  filter(!mtld == as.numeric("inf")) %>%
-  filter(!length < 100)
+  filter(!mtld == as.numeric("inf")) 
 
 # filter kids' data with at least 5 observeations
 mtld_filter <- function(df) {
@@ -143,8 +134,8 @@ mtld_filter <- function(df) {
 }
 
 # merge data
-mtld_data <- mtld_filter(kid_mtld) %>%
-  left_join(y = mtld_filter(p_mtld), by = c("corpus", "subject", "age")) %>%
+mtld_data_us <- mtld_filter(kid_mtld_us) %>%
+  left_join(y = mtld_filter(p_mtld_us), by = c("corpus", "subject", "age")) %>%
   ungroup() %>%
   filter(complete.cases(.)) %>%
   rename(kid_mtld = mtld.x,
@@ -152,12 +143,10 @@ mtld_data <- mtld_filter(kid_mtld) %>%
          kid_length = length.x,
          mom_length = length.y) 
 
-write_feather(mtld_data, "/Users/Yawen/Desktop/
-              lexical diversity/trial6_childes/mtld_data.feather")
 ```
 
 *Measure lexical diversity with MATTR
-```{r}
+```{r, message=F, results='hide', warning=FALSE}
 ## create MATTR function
 mattr_fun <- function(df) {
   tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
@@ -168,25 +157,23 @@ mattr_fun <- function(df) {
 }
 
 # measure kid's speech
-kid_mattr <- map(kid_tokenized, mattr_fun) %>% 
+kid_mattr_us <- map(kid_tokenized_us, mattr_fun) %>% 
   bind_rows(.id = "subject") %>%
   separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
   mutate(corpus = as.numeric(corpus),
          subject = as.numeric(subject),
          age = as.numeric(age)) %>%
-  filter(!is.na(mattr)) %>%
-  filter(!length < 100)
+  filter(!is.na(mattr)) 
 
 
 # measure parents' speech
-p_mattr <- map(p_tokenized, mattr_fun) %>% 
+p_mattr_us <- map(p_tokenized_us, mattr_fun) %>% 
   bind_rows(.id = "subject") %>%
   separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
   mutate(corpus = as.numeric(corpus),
          subject = as.numeric(subject),
          age = as.numeric(age)) %>%
-  filter(!mattr == as.numeric("inf")) %>%
-  filter(!length < 100)
+  filter(!is.na(mattr))
 
 
 mattr_filter <- function(df) {
@@ -199,8 +186,8 @@ mattr_filter <- function(df) {
 }
 
 # merge data
-mattr_data <- mattr_filter(kid_mattr) %>%
-  left_join(y = mattr_filter(p_mattr), by = c("corpus", "subject", "age")) %>%
+mattr_data_us <- mattr_filter(kid_mattr_us) %>%
+  left_join(y = mattr_filter(p_mattr_us), by = c("corpus", "subject", "age")) %>%
   ungroup() %>%
   filter(complete.cases(.)) %>%
   rename(kid_mattr = mattr.x,
@@ -208,22 +195,10 @@ mattr_data <- mattr_filter(kid_mattr) %>%
          kid_length = length.x,
          mom_length = length.y)
   
-mattr_50 <- mattr_filter(kid_mattr) %>%
-  left_join(y = mattr_filter(p_mattr), by = c("corpus", "subject", "age")) %>%
-  ungroup() %>%
-  filter(complete.cases(.)) %>%
-  rename(kid_mattr = mattr.x,
-         mom_mattr = mattr.y,
-         kid_length = length.x,
-         mom_length = length.y)
-
-# write kid data to disk
-write_feather(mattr_data, "/Users/Yawen/Desktop/
-              lexical diversity/trial6_childes/mattr_data.feather")
 ```
 
 *Measure lexical diversity with vocd-D
-```{r, message=F}
+```{r, message=F, results='hide', warning=FALSE}
 # create function to measure lexical diversity with VOCD-D
 vocd_fun <- function(df) {
   tokenized_df <- koRpus::tokenize(df$utts, format = "obj", 
@@ -231,84 +206,29 @@ vocd_fun <- function(df) {
   HDD <- HDD(tokenized_df)# measure LD
   vocd <- data_frame(vocd = HDD@HDD$HDD) # get LD measurement
   length <- data_frame(length = HDD@tt$num.tokens)  # get length meaasurement
-  merge(x = length,y = vocd, by = NULL) # combine LD and lenghth values
+  merge(x = length, y = vocd, by = NULL) # combine LD and lenghth values
 }
 
 # measure child's speech
-kid_vocd <- map(kid_tokenized, vocd_fun)%>% 
+kid_vocd_us <- map(kid_tokenized_us, vocd_fun)%>% 
   bind_rows(.id = "subject") %>%
   separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
   mutate(corpus = as.numeric(corpus),
          subject = as.numeric(subject),
-         age = as.numeric(age)) %>%
-  filter(!vocd == as.numeric("inf"))%>%
-  filter(!length < 100)
+         age = as.numeric(age)) 
 
 
 # measure parents' speech
-p_vocd <- map(p_tokenized, vocd_fun) %>% 
+p_vocd_us <- map(p_tokenized_us, vocd_fun) %>% 
   bind_rows(.id = "subject") %>%
   separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
   mutate(corpus = as.numeric(corpus),
          subject = as.numeric(subject),
-         age = as.numeric(age)) %>%
-  filter(!vocd== as.numeric("inf")) %>%
-  filter(!length < 100)
+         age = as.numeric(age)) 
 
 # filter child with more than 5 observations
-filter_fun <- function(df) {
+vocd_filter <- function(df) {
   nld <- aggregate(df$vocd, by = list(subject = df$subject),length)
-  nchild <- nld$subject[(nld$x > 5)]
-  df <- df %>%
-    filter(subject %in% nchild) %>%
-    group_by(subject)
-  return(df)
-}
-
-vocd_data <- filter_fun(kid_vocd) %>%
-  left_join(y = filter_fun(p_vocd), by = c("corpus", "subject", "age")) %>%
-  ungroup() %>%
-  filter(complete.cases(.)) %>%
-  rename(kid_vocd = vocd.x,
-         mom_vocd = vocd.y) %>%
-  select(corpus, subject, age,kid_vocd, mom_vocd)
-
-
-write_feather(vocd_data, "/Users/Yawen/Desktop/
-              lexical diversity/trial6_childes/vocd_data.feather")
-```
-
-*Measure lexical diversity with TTR
-```{r}
-ttr_fun <- function(df) {
-  tokenized_df <- koRpus::tokenize(df$utts, format = "obj", 
-                                   lang = "en", tag = TRUE) #tokenize texts
-  TTR <- TTR(tokenized_df)# measure LD
-  rep <- data_frame(rep = TTR@TTR) # get LD measurement
-  length <- data_frame(length = TTR@tt$num.tokens)  # get length meaasurement
-  merge(x = length,y = rep, by = NULL) # combine LD and lenghth values
-}
-
-
-kid_rep <- map(kid_tokenized, ttr_fun)%>% 
-  bind_rows(.id = "subject") %>%
-  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
-  mutate(corpus = as.numeric(corpus),
-         subject = as.numeric(subject),
-         age = as.numeric(age)) %>%
-  filter(length >= 100)
-
-mom_rep <- map(p_tokenized, ttr_fun)%>% 
-  bind_rows(.id = "subject") %>%
-  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
-  mutate(corpus = as.numeric(corpus),
-         subject = as.numeric(subject),
-         age = as.numeric(age)) %>%
-  filter(length >= 100)
-
-
-filter_fun <- function(df) {
-  nld <- aggregate(df$rep, by = list(subject = df$subject),length)
   nchild <- nld$subject[(nld$x > 4)]
   df <- df %>%
     filter(subject %in% nchild) %>%
@@ -316,14 +236,254 @@ filter_fun <- function(df) {
   return(df)
 }
 
-ttr_data <- filter_fun(kid_rep)%>%
-  left_join(y=filter_fun(mom_rep), by = c("corpus", "subject", "age")) %>%
+vocd_data_us <- vocd_filter(kid_vocd_us) %>%
+  left_join(y = vocd_filter(p_vocd_us), by = c("corpus", "subject", "age")) %>%
   ungroup() %>%
   filter(complete.cases(.)) %>%
-  rename(kid_ttr = rep.x,
-         mom_ttr = rep.y,
+  rename(kid_vocd = vocd.x,
+         mom_vocd = vocd.y,
+         kid_length = length.x,
+         mom_length = length.y) %>%
+  select(corpus, subject, age,kid_vocd, mom_vocd)
+
+```
+
+*Measure lexical diversity with TTR
+```{r, message=F, results='hide', warning=FALSE}
+ttr_fun <- function(df) {
+  tokenized_df <- koRpus::tokenize(df$utts, format = "obj", 
+                                   lang = "en", tag = TRUE) #tokenize texts
+  TTR <- TTR(tokenized_df)# measure LD
+  ttr <- data_frame(ttr = TTR@TTR) # get LD measurement
+  length <- data_frame(length = TTR@tt$num.tokens)  # get length meaasurement
+  merge(x = length,y = ttr, by = NULL) # combine LD and lenghth values
+}
+
+
+kid_ttr_us <- map(kid_tokenized_us, ttr_fun)%>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) 
+
+mom_ttr_us <- map(p_tokenized_us, ttr_fun)%>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) 
+
+
+ttr_filter <- function(df) {
+  nld <- aggregate(df$ttr, by = list(subject = df$subject),length)
+  nchild <- nld$subject[(nld$x > 4)]
+  df <- df %>%
+    filter(subject %in% nchild) %>%
+    group_by(subject)
+  return(df)
+}
+
+ttr_data_us <- ttr_filter(kid_ttr_us)%>%
+  left_join(y = ttr_filter(mom_ttr_us), by = c("corpus", "subject", "age")) %>%
+  ungroup() %>%
+  filter(complete.cases(.)) %>%
+  rename(kid_ttr = ttr.x,
+         mom_ttr = ttr.y,
          kid_length = length.x,
          mom_length = length.y) 
 
-write_feather(ttr_data, "/Users/Yawen/Desktop/lexical diversity/trial6_childes/ttr_data.feather")
+```
+
+* Clean British Data
+```{r, message=F, results='hide', warning=FALSE}
+# get utterances 
+utter_uk <- get_utterances(
+collection = "Eng-UK", corpus = NULL,
+child = NULL, role = NULL) 
+
+
+# remove unintelligible utterances
+murmur = c("xxx", "yyy", "yyy_yyy","---")
+
+utter_clean <- utter_uk %>%
+  filter(speaker_code == "CHI") %>% 
+  filter(!stem %in% murmur) %>%
+  mutate(stem = removeWords(stem, murmur),
+         stem = gsub("[^[:alnum:]]", " ", stem),
+         stem = tolower(stem)) %>%
+  filter(!grepl("^\\s*$", stem)) 
+
+utter_p_uk <- utter_uk %>%
+  filter(speaker_code == "MOT" | speaker_code == "FAT") %>%
+  filter(!stem %in% murmur) %>%
+  mutate(stem = removeWords(stem, murmur),
+        stem = gsub("[^[:alnum:]]", " ", stem),
+        stem = tolower(stem)) %>%
+  filter(!grepl("^\\s*$", stem)) 
+ 
+
+# collapse utterances of child at one month to one row
+kid_collapsed_uk <- utter_clean %>%
+  filter(corpus_id == corpus_id) %>%
+  filter(speaker_id == speaker_id) %>%
+  filter(target_child_age == target_child_age) %>%
+  filter(transcript_id == transcript_id) %>%
+  group_by(corpus_id, speaker_id, target_child_age, transcript_id) %>%
+  summarise(utts = paste0(stem, collapse = " ")) %>%
+  mutate(age = floor(target_child_age/30.5)) %>%
+  ungroup(.)%>%
+  select(-target_child_age)%>%
+  rename(corpus = corpus_id, subject = speaker_id,
+         session = transcript_id) %>%
+  filter(corpus %in% c(200, 197, 201, 203, 205, 206, 208,202,43, 207)) # only measure typically-developing children
+
+write_feather(kid_collapsed_uk, "/Users/Yawen/Desktop/lexical diversity/trial6_childes/kid_collapsed_uk.feather")
+
+kid_tokenized_uk <- kid_collapsed_uk %>%  
+  ungroup(.) %>%
+  filter(complete.cases(.)) %>%
+  split(paste0(.$corpus, "-",.$subject, "-", .$age, "-"))  
+ 
+
+# tokenize utterances of caregiver 
+p_tokenized_uk <- utter_p_uk %>%
+  filter(corpus_id == corpus_id) %>%
+  filter(transcript_id == transcript_id) %>%
+  filter(target_child_age == target_child_age) %>%
+  group_by(corpus_id, transcript_id, target_child_age) %>%
+  summarise(utts = paste0(stem, collapse = " ")) %>%
+  mutate(age = floor(target_child_age/30.5)) %>%
+  select(-target_child_age) %>%
+  rename(corpus = corpus_id, session = transcript_id) %>%
+  left_join(select(kid_collapsed_uk, corpus, subject, session, age)) %>%
+  filter(corpus %in% c(200, 197, 201, 203, 205, 206, 208,202,43,207))%>%
+  ungroup(.) %>%
+  filter(complete.cases(.)) %>%
+  split(paste0(.$corpus, "-",.$subject, "-", .$age, "-")) 
+```
+
+* Measure Lexical Diversity of British Participants
+```{r, message=F, results='hide', warning=FALSE}
+# measure MTLD
+kid_mtld_uk <- map(kid_tokenized_uk, mtld_fun) %>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) %>%
+  filter(!mtld == as.numeric("inf")) 
+
+p_mtld_uk <- map(p_tokenized_uk, mtld_fun) %>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) %>%
+  filter(!mtld == as.numeric("inf"))
+
+
+mtld_data_uk <- mtld_filter(kid_mtld_uk) %>%
+  left_join(y = mtld_filter(p_mtld_uk), by = c("corpus", "subject", "age")) %>%
+  ungroup() %>%
+  filter(complete.cases(.)) %>%
+  rename(kid_mtld = mtld.x,
+         mom_mtld = mtld.y,
+         kid_length = length.x,
+         mom_length = length.y) 
+
+
+# measure MATTR
+kid_mattr_uk <- map(kid_tokenized_uk, mattr_fun) %>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) 
+
+p_mattr_uk <- map(p_tokenized_uk, mattr_fun) %>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) 
+
+
+mattr_data_uk <- mattr_filter(kid_mattr_uk) %>%
+  left_join(y = mattr_filter(p_mattr_uk), by = c("corpus", "subject", "age")) %>%
+  ungroup() %>%
+  filter(complete.cases(.)) %>%
+  rename(kid_mattr = mattr.x,
+         mom_mattr = mattr.y,
+         kid_length = length.x,
+         mom_length = length.y)
+  
+
+# measure vocd-D
+kid_vocd_uk <- map(kid_tokenized_uk, vocd_fun)%>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) 
+
+p_vocd_uk <- map(p_tokenized_uk, vocd_fun) %>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) 
+
+
+vocd_data_uk <- vocd_filter(kid_vocd_uk) %>%
+  left_join(y = vocd_filter(p_vocd_uk), by = c("corpus", "subject", "age")) %>%
+  ungroup() %>%
+  filter(complete.cases(.)) %>%
+  rename(kid_vocd = vocd.x,
+         mom_vocd = vocd.y) %>%
+  select(corpus, subject, age,kid_vocd, mom_vocd)
+
+
+# Measure TTR
+kid_ttr_uk <- map(kid_tokenized_uk, ttr_fun)%>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age))
+
+mom_ttr_uk <- map(p_tokenized_uk, ttr_fun)%>% 
+  bind_rows(.id = "subject") %>%
+  separate(col = subject, into = c("corpus","subject", "age"), sep = "-") %>%
+  mutate(corpus = as.numeric(corpus),
+         subject = as.numeric(subject),
+         age = as.numeric(age)) 
+
+
+ttr_data_uk <- ttr_filter(kid_ttr_uk)%>%
+  left_join(y = ttr_filter(mom_ttr_uk), by = c("corpus", "subject", "age")) %>%
+  ungroup() %>%
+  filter(complete.cases(.)) %>%
+  rename(kid_ttr = ttr.x,
+         mom_ttr = ttr.y,
+         kid_length = length.x,
+         mom_length = length.y) 
+```
+
+```{r, message=F, warning=F}
+# merge all data
+us_all <- mtld_data_us%>%
+  left_join(mattr_data_us)%>%
+  left_join(vocd_data_us)%>%
+  left_join(ttr_data_us)%>%
+  mutate(group = "us")
+
+uk_all <- mtld_data_uk%>%
+  left_join(mattr_data_uk)%>%
+  left_join(vocd_data_uk)%>%
+  left_join(ttr_data_uk)%>%
+  mutate(group = "uk")
+
+write_feather(us_all, "/Users/Yawen/Desktop/lexical diversity/trial6_childes/us_all.feather")
+write_feather(uk_all, "/Users/Yawen/Desktop/lexical diversity/trial6_childes/uk_all.feather")
 ```

@@ -56,6 +56,7 @@ measures <- tbl(ldp, "measures") %>%
 murmur = c("xxx", "yyy", "yyy_yyy","---",
            "s","f","t","n","d","b","e","c","o","v","h","r","k","j","g",
            "p","x","z","u","v","m","l")
+
 utter_clean <- utter %>%
   mutate(c_utts = tolower(c_utts),
          c_utts = removeWords(c_utts, murmur),
