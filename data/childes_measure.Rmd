@@ -470,8 +470,8 @@ ttr_data_uk <- ttr_filter(kid_ttr_uk)%>%
          mom_length = length.y) 
 ```
 
+* Merge Data
 ```{r, message=F, warning=F}
-# merge all data
 us_all <- mtld_data_us%>%
   left_join(mattr_data_us)%>%
   left_join(vocd_data_us)%>%
@@ -486,4 +486,49 @@ uk_all <- mtld_data_uk%>%
 
 write_feather(us_all, "/Users/Yawen/Desktop/lexical diversity/trial6_childes/us_all.feather")
 write_feather(uk_all, "/Users/Yawen/Desktop/lexical diversity/trial6_childes/uk_all.feather")
+```
+
+* Measure MLU
+```{r, echo=F, eval=F,message=F, warning=F}
+# load CHILDES data
+uk_all <- read_feather("/Users/Yawen/Desktop/lexical diversity/triaL6_childes/uk_all.feather") 
+us_all <-read_feather("/Users/Yawen/Desktop/lexical diversity/triaL6_childes/us_all.feather")
+
+speaker_stat <- get_speaker_statistics(collection = c("Eng-NA","Eng-UK")) %>%
+   rename(corpus = corpus_id,
+         subject = target_child_id,
+         session = transcript_id) %>%
+  filter(subject %in% unique(us_all$subject) | subject %in% unique(uk_all$subject)) %>%
+  mutate(group = ifelse(subject %in% unique(us_all$subject), "us","uk"),
+         age = floor(target_child_age/30.5))%>%
+  filter(!speaker_role == "Investigator")%>%
+  select(-target_child_age)
+
+mom_stat <- speaker_stat %>%
+  filter(speaker_role == "Mother"| speaker_role =="Father")%>%
+  group_by(subject, age)%>%
+  mutate(mom_num_utter = sum(num_utterances, na.rm = TRUE),
+         mom_num_type = sum(num_types, na.rm = T),
+         mom_num_token = sum(num_tokens, na.rm = T),
+         mom_mlu = mom_num_token / mom_num_utter)%>%
+  select(subject, age, group, mom_mlu)%>%
+  unique(.)
+
+kid_stat <- speaker_stat %>%
+  filter(!speaker_role == "Mother"| !speaker_role =="Father")%>%
+  group_by(subject, age)%>%
+  mutate(kid_num_utter = sum(num_utterances, na.rm = TRUE),
+         kid_num_type = sum(num_types, na.rm = T),
+         kid_num_token = sum(num_tokens, na.rm = T),
+         kid_mlu = kid_num_token / kid_num_utter)%>%
+  select(subject, age, group, kid_mlu)%>%
+  unique(.)
+
+  
+childes_all <- uk_all %>%
+  rbind(us_all)%>%
+  left_join(mom_stat)%>%
+  left_join(kid_stat)
+  
+write_feather(childes_all, "/Users/Yawen/Desktop/lexical diversity/triaL6_childes/childes_all.feather") 
 ```

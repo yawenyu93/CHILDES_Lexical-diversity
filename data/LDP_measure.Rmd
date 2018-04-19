@@ -102,7 +102,6 @@ mom_col <- utter_mom %>%
 # keep only complete rows
 mom_tok <- mom_col[complete.cases(mom_col),] %>%
   split(paste0(.$subject, "-", .$session, "-", .$age)) 
-
 ```
 
 * Measure MTLD
@@ -300,13 +299,82 @@ vocd_data <- vocd_filter(kid_vocd) %>%
   left_join(session_age)
 ```
 
+* Measure MLU
 ```{r}
-# merge all data
-ldp_data <- mtld_data %>%
-  left_join(mattr_data)%>%
-  left_join(vocd_data)%>%
-  left_join(ttr_data)%>%
-  filter(complete.cases(.))
+kid_mlu <- measures %>%
+  filter(speaker == "C")%>%
+  rename(kid_mlu = mlu) %>%
+  select(subject, session, kid_mlu)
 
-write_feather(ldp_data,"/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_data.feather")
+mom_mlu <- measures %>%
+  filter(speaker == "P")%>%
+  rename(mom_mlu = mlu) %>%
+  select(subject, session, mom_mlu)
+
+mlu_data <- kid_mlu %>%
+  left_join(mom_mlu)%>%
+  filter(complete.cases(.))%>%
+  left_join(session_age)
+```
+
+
+```{r, echo=F, eval=F,message=F, warning=F}
+# load LDP data
+ldp_cdi <- read_csv("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/cdi.csv")
+ldp_ppvt <- read_csv("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ppvt.csv")
+  
+# filter children with at least 2 observations
+filter_func <- function(df) {
+  num <- aggregate(df$vocab,
+  by = list(subject = df$subject),length)
+  nchild <- num$subject[(num$x > 1)]
+  df <- df %>%
+  filter(subject %in% nchild) %>%
+  group_by(subject)
+  return(df)
+}
+
+
+ldp_ppvt <- ldp_ppvt %>%
+  rename(subject = `I Home Visit Info::subject_number`)%>%
+  mutate(vocab = as.numeric(`ppvt_raw`)) %>%
+  filter_func(.)%>%
+  select(-c(ppvt))%>%
+  rename(ppvt = vocab)%>%
+  select(subject, session, ppvt)
+  
+  
+ldp_cdi <- ldp_cdi %>%
+  rename(age = `cdis_subjectage`,
+         subject = `I Home Visit Info::subject_number`,
+         vocab = `Number of words`)%>%
+  filter(!is.na(age))%>%
+  filter_func(.)%>%
+  mutate(sentence = as.numeric(`Sentence complexity`),
+         session = ifelse(age <=16,1,
+                          ifelse(age<=20,2,
+                          ifelse(age<=24,3,
+                          ifelse(age<=28,4,
+                          ifelse(age<=32,5,
+                          ifelse(age<=36,6,
+                          ifelse(age<=40,7))))))))%>%
+  rename(cdi =vocab)%>%
+  select(subject, session, cdi, sentence)
+  
+
+# combine CDI and PPVT with other datasets by `session`
+ldp_all <- mtld_data %>%
+  left_join(mattr_data) %>%
+  left_join(vocd_data) %>%
+  left_join(ttr_data)%>%
+  left_join(mlu_data)%>%
+  filter(complete.cases(.))%>%
+  left_join(ldp_cdi,by =c("subject","session"))%>%
+  left_join(ldp_ppvt)%>%
+  left_join(session_age)%>%
+  select(-c(sex, race, ethn, income))%>%
+  group_by(subject)
+  
+
+write_feather(ldp_all,"/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_all.feather" )
 ```
