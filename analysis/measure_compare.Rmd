@@ -46,45 +46,34 @@ childes_all %>%
        subtitle = "14 ~ 58 Months",
        y = "lexical diversity (scaled)")
 
-# facet by UK/US group
-childes_all %>%
-  ggplot()+
-  geom_smooth(aes(x=age,y=scale(kid_ttr), color="ttr"), se=F)+
-  geom_smooth(aes(x=age,y=scale(kid_mattr), color="mattr"), se=F)+
-  geom_smooth(aes(x=age,y=scale(kid_vocd), color="vocd"), se=F)+
-  geom_smooth(aes(x=age,y=scale(kid_mtld), color="mtld"), se=F)+
-  geom_smooth(aes(x=age,y=scale(kid_mlu), color="mlu"), se=F)+
-  facet_grid(~group)+
-  theme_classic()+
-  labs(title = "CHILDES: Growth Curve of Lexical Diversity", 
-       subtitle = "14 ~ 58 Months",
-       y = "lexical diversity (scaled)")
 
 # compare with CDI 
 ldp_all%>%
+  filter(age >=14 & age <=30)%>%
   group_by(subject)%>%
   ggplot()+
   geom_smooth(aes(x=age,y=scale(kid_ttr), color="ttr"), se=F)+
+  geom_smooth(aes(x=age,y=scale(kid_mlu), color="mlu"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_mattr), color="mattr"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_vocd), color="vocd"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_mtld), color="mtld"), se=F)+
   geom_smooth(aes(x=age, y=scale(cdi), color="CDI"),se=F)+
-  xlim(14,30)+
   theme_classic()+
   labs(title = "Compare Lexical Diversity Indices with CDI", 
-       subtitle = "LDP: 18 ~ 30 Months",
+       subtitle = "LDP: 14 ~ 30 Months",
        y = "lexical diversity (scaled)")
 
 # compare with PPVT 
 ldp_all%>%
+  filter(age >=30 & age <=53)%>%
   group_by(subject)%>%
   ggplot()+
   geom_smooth(aes(x=age,y=scale(kid_ttr), color="ttr"), se=F)+
+  geom_smooth(aes(x=age,y=scale(kid_mlu), color="mlu"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_mattr), color="mattr"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_vocd), color="vocd"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_mtld), color="mtld"), se=F)+
   geom_smooth(aes(x=age, y=scale(ppvt), color="PPVT"),se=F)+
-  xlim(30, 53)+
   theme_classic()+
   labs(title = "Compare Lexical Diversity Indices with PPVT", 
        subtitle = "LDP: 30 ~ 53 Months",
@@ -164,7 +153,8 @@ kid_cdi<-  ran_effects %>%
   mutate(cdi_intercept = predict(Model1, newdata = .)) %>%
    select(-c(age))
 
-# modelPPVT measurements
+
+# model PPVT measurements
 Model2 <- lmer(ppvt ~ 1 + log(age) + (1+log(age)|subject), data=ldp_all)
 
 fixed_effects <- fixef(Model2) 
@@ -375,6 +365,7 @@ kid_mtld <-  ran_effects %>%
   mutate(mtld_intercept = predict(Model1, newdata = .)) %>%
   select(-c(age))
 
+
 ## fit MTLD model (Mother)
 mtld_model <- lmer(mom_mtld ~ 1 + log(age) +
                     (1+log(age)|subject), data = childes_all)
@@ -479,7 +470,7 @@ Model5 <- lmer(kid_mlu ~ 1 + log(age) +
                     (1+log(age)|subject), data = childes_all)
 
 fixed_effects <- fixef(Model5) 
-ran_effects <- as_data_frame(ranef(Model4)$subject) 
+ran_effects <- as_data_frame(ranef(Model5)$subject) 
 kid_mlu <-  ran_effects %>%
   mutate(subject = as.integer(rownames(ran_effects)),
          mlu_slope = `log(age)` + fixed_effects[2]) %>%
@@ -519,7 +510,7 @@ childes_intercept <- kid_mtld %>%
 write_feather(childes_intercept, "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/childes_intercept.feather" )
 ```
 
-#### Compare by Variance of parameters
+#### Variance in parameters
 ```{r, message=F, warning=F}
 childes_intercept <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/childes_intercept.feather")
 ldp_intercept <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_intercept.feather")

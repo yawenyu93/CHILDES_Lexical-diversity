@@ -12,8 +12,8 @@ code_folding: hide
 toc_float: no
 ---
 
+* Library required packages 
 ```{r, load data, message=FALSE, results='hide', warning=FALSE, echo=FALSE}
-## Library required packages
 library(koRpus)
 library(tidyverse)
 library(tm)
@@ -23,7 +23,7 @@ library(feather)
 library(sjPlot)
 ```
 
-
+* Get utterances
 ```{r, eval=FALSE, message=FALSE, results='hide', echo=FALSE}
 #### Load and Clean Data
 # Read in LDP data
@@ -41,18 +41,18 @@ subjs <- tbl(ldp, "subjects") %>%
 # Get visit data
 visits <- tbl(ldp, "visits") %>%
   collect() %>%
-  select(subject, session, date, child_age, child_age_years, child_age_months,
-         income)
+  select(subject, session, date, child_age, child_age_years, 
+         child_age_months, income)
 
 # Get measures data
 measures <- tbl(ldp, "measures") %>%
   collect() %>%
   select(-last_update) %>%
-  left_join(y=visits, by = c("subject", "session")) %>%
-  mutate(ttr = word_types/word_tokens) 
+  left_join(y=visits, by = c("subject", "session")) 
 
 # remove unintelligible utterances
 murmur = c("xxx", "yyy", "yyy_yyy","---")
+
 utter_clean <- utter %>%
   filter(!c_utts %in% murmur) %>%
   mutate(c_utts = removeWords(c_utts, murmur),
@@ -61,8 +61,8 @@ utter_clean <- utter %>%
   filter(!grepl("^\\s*$", c_utts)) 
 
 
-#### Notice: Age column is NOT completely coded, but Session column is complete
 # complete missing Age data according to Session data
+## because age column is NOT completely coded, but Session column is complete
 session_age <- measures %>%
   select("session", "child_age_months") %>%
   mutate(child_age_months = floor(child_age_months)) %>%
@@ -131,11 +131,11 @@ mom_mtld <- map(mom_tok, mtld_fun)%>%
          session = as.integer(session)) %>%
   filter(!mtld == as.numeric("inf")) 
 
-# filter kids' data with at least 5 observeations
+# filter kids' data with at least 3 observeations
 mtld_filter <- function(df) {
   nmtld <- aggregate(df$mtld,
   by = list(subject = df$subject),length)
-  nchild <- nmtld$subject[(nmtld$x > 4)]
+  nchild <- nmtld$subject[(nmtld$x > 2)]
   df <- df %>%
   filter(subject %in% nchild) %>%
   group_by(subject)
@@ -151,7 +151,7 @@ mtld_data <- mtld_filter(kid_mtld) %>%
          mom_length = length.y) %>%
   left_join(y = session_age, by = c("session")) %>%
   left_join(y = subjs, by = c("subject")) %>%
-  filter(lesion == "") %>% ## keep data of typically-developing children
+  filter(lesion == "") %>% ##only keep typically-developing children
   left_join(visits) %>%
   group_by(subject) %>%
   mutate(income = replace(income, is.na(income), floor(mean(income, na.rm = T)))) %>%
@@ -186,10 +186,10 @@ mom_mattr <- map(mom_tok, mattr_fun)%>%
          session = as.integer(session)) 
 
 
-# filter child with at least 5 observations
+# filter child with at least 3 observations
 mattr_filter <- function(df) {
   nld <- aggregate(df$mattr, by = list(subject = df$subject),length)
-  nchild <- nld$subject[(nld$x > 4)]
+  nchild <- nld$subject[(nld$x > 2)]
   df <- df %>%
     filter(subject %in% nchild) %>%
     group_by(subject)
@@ -210,7 +210,7 @@ mattr_data <- mattr_filter(kid_mattr) %>%
 
 ```
 
-*Measure TTR (Type-Token ratio)
+* Measure TTR (Type-Token ratio)
 ```{r}
 ttr_fun <- function(df) {
   tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
@@ -236,7 +236,7 @@ mom_ttr <- map(mom_tok, ttr_fun)%>%
 
 ttr_filter <- function(df) {
   nld <- aggregate(df$ttr, by = list(subject = df$subject),length)
-  nchild <- nld$subject[(nld$x > 4)]
+  nchild <- nld$subject[(nld$x > 2)]
   df <- df %>%
     filter(subject %in% nchild) %>%
     group_by(subject)
@@ -254,7 +254,7 @@ ttr_data <- ttr_filter(kid_ttr)%>%
          mom_length = length.y) 
 ```
 
-*Measure vocd-D 
+* Measure vocd-D 
 ```{r,measure,eval=F, message=FALSE, results='hide', echo=FALSE}
 # create function to measure Lexical diversity with VOCD-D
 vocd_fun <- function(df) {
@@ -277,10 +277,10 @@ mom_vocd <- map(mom_tok, vocd_fun)%>%
   mutate(subject = as.integer(subject),
          session = as.integer(session)) 
 
-# filter child with at least 5 observations
+# filter child with at least 3 observations
 vocd_filter <- function(df) {
   nld <- aggregate(df$vocd, by = list(subject = df$subject),length)
-  nchild <- nld$subject[(nld$x > 4)]
+  nchild <- nld$subject[(nld$x > 2)]
   df <- df %>%
     filter(subject %in% nchild) %>%
     group_by(subject)
@@ -317,7 +317,7 @@ mlu_data <- kid_mlu %>%
   left_join(session_age)
 ```
 
-
+* Get PPVT&CDI data
 ```{r, echo=F, eval=F,message=F, warning=F}
 # load LDP data
 ldp_cdi <- read_csv("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/cdi.csv")
@@ -360,8 +360,10 @@ ldp_cdi <- ldp_cdi %>%
                           ifelse(age<=40,7))))))))%>%
   rename(cdi =vocab)%>%
   select(subject, session, cdi, sentence)
-  
+```  
 
+* Merge data
+```{r}
 # combine CDI and PPVT with other datasets by `session`
 ldp_all <- mtld_data %>%
   left_join(mattr_data) %>%
