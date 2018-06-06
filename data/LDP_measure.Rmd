@@ -337,7 +337,7 @@ filter_func <- function(df) {
 
 ldp_ppvt <- ldp_ppvt %>%
   rename(subject = `I Home Visit Info::subject_number`)%>%
-  mutate(vocab = as.numeric(`ppvt_raw`)) %>%
+  mutate(vocab = as.numeric(`ppvt_percentile`)) %>%
   filter_func(.)%>%
   select(-c(ppvt))%>%
   rename(ppvt = vocab)%>%

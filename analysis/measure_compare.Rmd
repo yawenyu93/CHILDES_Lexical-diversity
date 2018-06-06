@@ -33,6 +33,7 @@ childes_all <- read_feather("/Users/Yawen/Desktop/lexical diversity/triaL6_child
 
 ldp_all <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_all.feather")
 
+
 # Plot Growth Curve
 childes_all %>%
   ggplot()+
@@ -40,7 +41,6 @@ childes_all %>%
   geom_smooth(aes(x=age,y=scale(kid_mattr), color="mattr"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_vocd), color="vocd"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_mtld), color="mtld"), se=F)+
-  geom_smooth(aes(x=age,y=scale(kid_mlu), color="mlu"), se=F)+
   theme_classic()+
   labs(title = "CHILDES: Growth Curve of Lexical Diversity", 
        subtitle = "14 ~ 58 Months",
@@ -53,7 +53,6 @@ ldp_all%>%
   group_by(subject)%>%
   ggplot()+
   geom_smooth(aes(x=age,y=scale(kid_ttr), color="ttr"), se=F)+
-  geom_smooth(aes(x=age,y=scale(kid_mlu), color="mlu"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_mattr), color="mattr"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_vocd), color="vocd"), se=F)+
   geom_smooth(aes(x=age,y=scale(kid_mtld), color="mtld"), se=F)+
@@ -280,35 +279,6 @@ mom_ttr <-  ran_effects %>%
   mutate(mom_ttr_intercept = predict(ttr_model, newdata = .)) %>%
   select(-c(age))
 
-## fit MLU
-mlu_model <- lmer(kid_mlu ~ 1 + log(age) +
-                    (1+log(age)|subject), data = ldp_all)
-
-fixed_effects <- fixef(mlu_model) 
-ran_effects <- as_data_frame(ranef(mlu_model)$subject) 
-kid_mlu <-  ran_effects %>%
-  mutate(subject = as.integer(rownames(ran_effects)),
-         mlu_slope = `log(age)` + fixed_effects[2]) %>%
-  select(subject, mlu_slope) %>%
-  mutate(age = 30)%>%
-  mutate(mlu_intercept = predict(mlu_model, newdata = .)) %>%
-  select(-c(age))
-
-## fit MLU (Mother)
-mom_mlu_model <- lmer(mom_mlu ~ 1 + log(age) +
-                    (1+log(age)|subject), data = ldp_all)
-
-fixed_effects <- fixef(mom_mlu_model) 
-ran_effects <- as_data_frame(ranef(mom_mlu_model)$subject) 
-mom_mlu <-  ran_effects %>%
-  mutate(subject = as.integer(rownames(ran_effects)),
-         mom_mlu_slope = `log(age)` + fixed_effects[2]) %>%
-  select(subject, mom_mlu_slope) %>%
-  mutate(age = 30)%>%
-  mutate(mom_mlu_intercept = predict(mom_mlu_model, newdata = .)) %>%
-  select(-c(age))
-
-
 
 ## fit sentence complexity
 sen_model <- lmer(sentence ~ 1 + log(age) +
@@ -336,8 +306,6 @@ ldp_intercept <- kid_cdi %>%
   left_join(mom_mattr) %>%
   left_join(mom_vocd) %>%
   left_join(mom_ttr)%>%
-  left_join(kid_mlu)%>%
-  left_join(mom_mlu)%>%
   left_join(kid_sen)
 
 write_feather(ldp_intercept, "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_intercept.feather" )
@@ -345,19 +313,13 @@ write_feather(ldp_intercept, "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/
 
 * Get parameters of children and mother in CHILDES data
 ```{r,echo=F, message=F, warning=F, eval=F}
-# group by US/UK language
-us_all <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial6_childes/us_all.feather")
-uk_all <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial6_childes/uk_all.feather")
-us_id <- unique(us_all$subject)
-uk_id <- unique(uk_all$subject)
-
 # fit MTLD model (children)
 Model1 <- lmer(kid_mtld ~ 1 + log(age) +
                     (1+log(age)|subject), data = childes_all)
 
 fixed_effects <- fixef(Model1) 
 ran_effects <- as_data_frame(ranef(Model1)$subject) 
-kid_mtld <-  ran_effects %>%
+mtld_kid <-  ran_effects %>%
   mutate(subject = as.integer(rownames(ran_effects)),
          mtld_slope = `log(age)` + fixed_effects[2]) %>%
   select(subject, mtld_slope) %>%
@@ -372,7 +334,7 @@ mtld_model <- lmer(mom_mtld ~ 1 + log(age) +
 
 fixed_effects <- fixef(mtld_model) 
 ran_effects <- as_data_frame(ranef(mtld_model)$subject) 
-mom_mtld <-  ran_effects %>%
+mtld_mom <-  ran_effects %>%
   mutate(subject = as.integer(rownames(ran_effects)),
          mom_mtld_slope = `log(age)` + fixed_effects[2]) %>%
   select(subject, mom_mtld_slope) %>%
@@ -387,7 +349,7 @@ Model2 <- lmer(kid_mattr ~ 1 + log(age) +
 
 fixed_effects <- fixef(Model2) 
 ran_effects <- as_data_frame(ranef(Model2)$subject) 
-kid_mattr <-  ran_effects %>%
+mattr_kid <-  ran_effects %>%
   mutate(subject = as.integer(rownames(ran_effects)),
          mattr_slope = `log(age)` + fixed_effects[2]) %>%
   select(subject, mattr_slope) %>%
@@ -401,7 +363,7 @@ mattr_model <- lmer(mom_mattr ~ 1 + log(age) +
 
 fixed_effects <- fixef(mattr_model) 
 ran_effects <- as_data_frame(ranef(mattr_model)$subject) 
-mom_mattr <-  ran_effects %>%
+mattr_mom <-  ran_effects %>%
   mutate(subject = as.integer(rownames(ran_effects)),
          mom_mattr_slope = `log(age)` + fixed_effects[2]) %>%
   select(subject, mom_mattr_slope) %>%
@@ -415,7 +377,7 @@ Model3 <- lmer(kid_vocd ~ 1 + log(age) +
 
 fixed_effects <- fixef(Model3) 
 ran_effects <- as_data_frame(ranef(Model3)$subject) 
-kid_vocd <-  ran_effects %>%
+vocd_kid <-  ran_effects %>%
   mutate(subject = as.integer(rownames(ran_effects)),
          vocd_slope = `log(age)` + fixed_effects[2]) %>%
   select(subject, vocd_slope) %>%
@@ -429,7 +391,7 @@ vocd_model <- lmer(mom_vocd ~ 1 + log(age) +
 
 fixed_effects <- fixef(vocd_model) 
 ran_effects <- as_data_frame(ranef(vocd_model)$subject) 
-mom_vocd <-  ran_effects %>%
+vocd_mom <-  ran_effects %>%
   mutate(subject = as.integer(rownames(ran_effects)),
          mom_vocd_slope = `log(age)` + fixed_effects[2]) %>%
   select(subject, mom_vocd_slope) %>%
@@ -443,7 +405,7 @@ Model4 <- lmer(kid_ttr ~ 1 + log(age) +
 
 fixed_effects <- fixef(Model4) 
 ran_effects <- as_data_frame(ranef(Model4)$subject) 
-kid_ttr <-  ran_effects %>%
+ttr_kid <-  ran_effects %>%
   mutate(subject = as.integer(rownames(ran_effects)),
          ttr_slope = `log(age)` + fixed_effects[2]) %>%
   select(subject, ttr_slope) %>%
@@ -457,7 +419,7 @@ ttr_model <- lmer(mom_ttr ~ 1 + log(age) +
 
 fixed_effects <- fixef(ttr_model) 
 ran_effects <- as_data_frame(ranef(ttr_model)$subject) 
-mom_ttr <-  ran_effects %>%
+ttr_mom <-  ran_effects %>%
   mutate(subject = as.integer(rownames(ran_effects)),
          mom_ttr_slope = `log(age)` + fixed_effects[2]) %>%
   select(subject, mom_ttr_slope) %>%
@@ -465,47 +427,17 @@ mom_ttr <-  ran_effects %>%
   mutate(mom_ttr_intercept = predict(ttr_model, newdata = .)) %>%
   select(-c(age))
 
-# model MLU (children)
-Model5 <- lmer(kid_mlu ~ 1 + log(age) + 
-                    (1+log(age)|subject), data = childes_all)
-
-fixed_effects <- fixef(Model5) 
-ran_effects <- as_data_frame(ranef(Model5)$subject) 
-kid_mlu <-  ran_effects %>%
-  mutate(subject = as.integer(rownames(ran_effects)),
-         mlu_slope = `log(age)` + fixed_effects[2]) %>%
-  select(subject, mlu_slope) %>%
-  mutate(age = 30)%>%
-  mutate(mlu_intercept = predict(Model5, newdata = .)) %>%
-  select(-c(age))
-
-## fit MLU model (Mother)
-mlu_model <- lmer(mom_mlu ~ 1 + log(age) +
-                    (1+log(age)|subject), data = childes_all)
-
-fixed_effects <- fixef(mlu_model) 
-ran_effects <- as_data_frame(ranef(mlu_model)$subject) 
-mom_mlu <-  ran_effects %>%
-  mutate(subject = as.integer(rownames(ran_effects)),
-         mom_mlu_slope = `log(age)` + fixed_effects[2]) %>%
-  select(subject, mom_mlu_slope) %>%
-  mutate(age = 30)%>%
-  mutate(mom_mlu_intercept = predict(mlu_model, newdata = .)) %>%
-  select(-c(age))
 
 # merge all intercept data
-childes_intercept <- kid_mtld %>%
-  left_join(kid_mattr)%>%
-  left_join(kid_vocd)%>%
-  left_join(kid_ttr)%>%
-  left_join(mom_mtld)%>%
-  left_join(mom_mattr) %>%
-  left_join(mom_vocd) %>%
-  left_join(mom_ttr)%>%
-  left_join(kid_mlu)%>%
-  left_join(mom_mlu)%>%
-  filter(complete.cases(.))%>%
-  mutate(group = ifelse(subject %in% us_id, "us", "uk"))
+childes_intercept <- mtld_kid %>%
+  left_join(mtld_mom)%>%
+  left_join(mattr_kid)%>%
+  left_join(vocd_kid)%>%
+  left_join(ttr_kid)%>%
+  left_join(mattr_mom) %>%
+  left_join(vocd_mom) %>%
+  left_join(ttr_mom)%>%
+  filter(complete.cases(.))
 
 write_feather(childes_intercept, "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/childes_intercept.feather" )
 ```
@@ -793,7 +725,6 @@ ldp_intercept%>%
   corrplot::corrplot(method = "square", type="upper")
 
 childes_intercept%>%
-  filter(complete.cases(.))%>%
   select(mom_mtld_intercept, mom_mattr_intercept, 
          mom_vocd_intercept, mom_ttr_intercept,
          mom_mtld_slope, mom_mattr_slope, 
@@ -804,7 +735,6 @@ childes_intercept%>%
 
 # plot parameters of child and mother
 ldp_intercept%>%
-  filter(complete.cases(.))%>%
   select(mom_mtld_intercept, mom_mattr_intercept, 
          mom_vocd_intercept, mom_ttr_intercept,
          mom_mlu_intercept, mom_mtld_slope, mom_mattr_slope, 
@@ -819,17 +749,14 @@ ldp_intercept%>%
   corrplot::corrplot(method = "square", type="upper")
 
 childes_intercept%>%
-  filter(complete.cases(.))%>%
   select(mom_mtld_intercept, mom_mattr_intercept,
          mom_vocd_intercept, mom_ttr_intercept,
          mom_mtld_slope, mom_mattr_slope,
          mom_vocd_slope, mom_ttr_slope,
-         mom_mlu_intercept, mom_mlu_slope,
          mtld_intercept, mtld_slope,
          mattr_intercept,mattr_slope,
          vocd_intercept, vocd_slope,
-         ttr_intercept, ttr_slope,
-         mlu_intercept, mlu_slope)%>%
+         ttr_intercept, ttr_slope)%>%
   cor() %>%
   corrplot::corrplot(method = "square", type="upper")
 ```
