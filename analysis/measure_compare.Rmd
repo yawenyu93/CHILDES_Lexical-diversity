@@ -24,31 +24,6 @@ library(tidytext)
 library(childesr)
 ```
 
----
-title: "Compare LD Indices"
-author: "Yawen Yu and Dan Yurovsky"
-date: '`r Sys.Date()`'
-output:
-html_document: null
-pdf_document: default
-toc: no
-number_sections: no
-theme: lumen
-code_folding: hide
-toc_float: no
----
-```{r, message=FALSE, warning=FALSE}
-library(stringr)
-library(feather)
-library(koRpus)
-library(tidyverse)
-library(lme4)
-library(dplyr)
-library(sjPlot)
-library(corrplot)
-library(tidytext)
-library(childesr)
-```
 
 ```{r, message=F, warning=F}
 # Load data
