@@ -3,9 +3,9 @@ title: "LDP_measure"
 author: 'Yawen Yu and Dan Yurovsky'
 date: '`r Sys.Date()`'
 output:
-  pdf_document: default
-  html_document: null
-  toc: no
+pdf_document: default
+html_document: null
+toc: no
 number_sections: no
 theme: lumen
 code_folding: hide
@@ -31,290 +31,282 @@ ldp <- src_sqlite("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp.db")
 
 # Get all utterances
 utter <- tbl(ldp, "utterances") %>%
-  collect() 
+        collect() 
 
 # Get all participants
 subjs <- tbl(ldp, "subjects") %>%
-  collect() %>%
-  rename(subject = id)
+        collect() %>%
+        rename(subject = id)
 
 # Get visit data
 visits <- tbl(ldp, "visits") %>%
-  collect() %>%
-  select(subject, session, date, child_age, child_age_years, 
-         child_age_months, income)
+        collect() %>%
+        group_by(subject) %>%
+        mutate(income = replace(income, is.na(income), floor(mean(income, na.rm = T)))) %>%
+        select(subject, session, income)
 
 # Get measures data
 measures <- tbl(ldp, "measures") %>%
-  collect() %>%
-  select(-last_update) %>%
-  left_join(y=visits, by = c("subject", "session")) 
-
-# remove unintelligible utterances
-murmur = c("xxx", "yyy", "yyy_yyy","---")
-
-utter_clean <- utter %>%
-  filter(!c_utts %in% murmur) %>%
-  mutate(c_utts = removeWords(c_utts, murmur),
-         c_utts = gsub("[^[:alnum:]]", " ", c_utts),
-         c_utts = tolower(c_utts)) %>%
-  filter(!grepl("^\\s*$", c_utts)) 
-
-
+        collect() %>%
+        select(-last_update) %>%
+        left_join(y=visits, by = c("subject", "session")) 
+        
 # complete missing Age data according to Session data
 ## because age column is NOT completely coded, but Session column is complete
 session_age <- measures %>%
-  select("session", "child_age_months") %>%
-  mutate(child_age_months = floor(child_age_months)) %>%
-  rename(age = child_age_months) %>%
-  unique(.) %>%
-  head(n=12)
+        select("session", "child_age_months") %>%
+        mutate(child_age_months = floor(child_age_months)) %>%
+        rename(age = child_age_months) %>%
+        unique(.) %>%
+        head(n=12)
 
 write_feather(session_age,
               "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/session_age.feather")
 
+# remove unintelligible utterances
+murmur = c("xxx", "yyy", "yyy_yyy","---")
+
+utter_kid <- utter %>%
+        filter(!c_utts %in% murmur) %>%
+        mutate(c_utts = removeWords(c_utts, murmur),
+               c_utts = gsub("[^[:alnum:]]", " ", c_utts),
+               c_utts = tolower(c_utts)) %>%
+        filter(!grepl("^\\s*$", c_utts)) %>%
+        left_join(session_age)
+
+
 # collapse utterances at one month to one row
-utter_collapsed <- utter_clean %>%
-  filter(subject == subject) %>%
-  filter(session == session) %>%
-  group_by(subject, session) %>%
-  summarise(utts = paste0(c_utts, collapse = " ")) 
+utter_collapsed <- utter_kid %>%
+        filter(subject == subject) %>%
+        filter(session == session) %>%
+        group_by(subject, session) %>%
+        summarise(utts = paste0(c_utts, collapse = " ")) 
 
 # keep only complete rows
 utter_tokenize <- utter_collapsed[complete.cases(utter_collapsed),] %>%
-                        split(paste0(.$subject, "-", .$session, "-"))  
+        split(paste0(.$subject, "-", .$session, "-"))  
 
 # Get Mother's speech
 utter_mom <- utter %>%
-  filter(!p_utts %in% murmur) %>%
-  mutate(p_utts = removeWords(p_utts, murmur),
-         p_utts = gsub("[^[:alnum:]]", " ", p_utts),
-         p_utts = tolower(p_utts)) %>%
-  filter(!grepl("^\\s*$", p_utts)) %>%
-  select(subject, session, p_utts)%>%
-  left_join(x=session_age, by = c("session")) 
+        filter(!p_utts %in% murmur) %>%
+        mutate(p_utts = removeWords(p_utts, murmur),
+               p_utts = gsub("[^[:alnum:]]", " ", p_utts),
+               p_utts = tolower(p_utts)) %>%
+        filter(!grepl("^\\s*$", p_utts)) %>%
+        select(subject, session, p_utts)%>%
+        left_join(x=session_age, by = c("session")) 
 
 # collapse each month's utterances to one row
 mom_col <- utter_mom %>%
-  group_by(subject, session, age) %>%
-  summarise(utts = paste0(p_utts, collapse = " "))
+        group_by(subject, session, age) %>%
+        summarise(utts = paste0(p_utts, collapse = " "))
 
 # keep only complete rows
 mom_tok <- mom_col[complete.cases(mom_col),] %>%
-  split(paste0(.$subject, "-", .$session, "-", .$age)) 
+        split(paste0(.$subject, "-", .$session, "-", .$age)) 
 ```
+
 
 * Measure MTLD
 ```{r, message=F, eval=F, echo=F}
 # write a function to measure LD with MTLD
 mtld_fun <- function(df) {
-  tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
-  MTLD <- MTLD(tokenized_df)# measure LD
-  mtld <- data_frame(mtld = MTLD@MTLD$MTLD) # get LD measurement
-  length <- data_frame(length = MTLD@tt$num.tokens)  # get length meaasurement
-  merge(x = length,y = mtld, by = NULL) # combine LD and lenghth values
+        tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+        MTLD <- MTLD(tokenized_df)# measure LD
+        mtld <- data_frame(mtld = MTLD@MTLD$MTLD) # get LD measurement
+        length <- data_frame(length = MTLD@tt$num.tokens)  # get length meaasurement
+        merge(x = length,y = mtld, by = NULL) # combine LD and lenghth values
 }
 
 # measure and filter accurate data
 kid_mtld <- map(utter_tokenize, mtld_fun)%>% 
-  bind_rows(.id = "id") %>%
-  separate(col = id, into = c("subject", "session"), sep = "-") %>%
-  mutate(subject = as.integer(subject),
-         session = as.integer(session)) %>%
-  filter(!mtld == as.numeric("inf")) 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) %>%
+        filter(!mtld == as.numeric("inf")) 
 
 
 mom_mtld <- map(mom_tok, mtld_fun)%>% 
-  bind_rows(.id = "id") %>%
-  separate(col = id, into = c("subject", "session"), sep = "-") %>%
-  mutate(subject = as.integer(subject),
-         session = as.integer(session)) %>%
-  filter(!mtld == as.numeric("inf")) 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) %>%
+        filter(!mtld == as.numeric("inf")) 
 
 # filter kids' data with at least 3 observeations
 mtld_filter <- function(df) {
-  nmtld <- aggregate(df$mtld,
-  by = list(subject = df$subject),length)
-  nchild <- nmtld$subject[(nmtld$x > 2)]
-  df <- df %>%
-  filter(subject %in% nchild) %>%
-  group_by(subject)
-  return(df)
+        nmtld <- aggregate(df$mtld,
+                           by = list(subject = df$subject),length)
+        nchild <- nmtld$subject[(nmtld$x > 2)]
+        df <- df %>%
+                filter(subject %in% nchild) %>%
+                group_by(subject)
+        return(df)
 }
 
 # merge data
 mtld_data <- mtld_filter(kid_mtld) %>%
-  left_join(y = mtld_filter(mom_mtld),by = c("subject", "session")) %>%
-  rename(kid_mtld = mtld.x,
-         kid_length = length.x,
-         mom_mtld = mtld.y,
-         mom_length = length.y) %>%
-  left_join(y = session_age, by = c("session")) %>%
-  left_join(y = subjs, by = c("subject")) %>%
-  filter(lesion == "") %>% ##only keep typically-developing children
-  left_join(visits) %>%
-  group_by(subject) %>%
-  mutate(income = replace(income, is.na(income), floor(mean(income, na.rm = T)))) %>%
-  ungroup(.) %>%
-  filter(complete.cases(.)) %>%
-  mutate(race = factor(race, levels = c("WH", "BL", "2+"))) %>%
-  mutate(sex = factor(sex, levels = c("M", "F"))) %>%
-  select(subject, session, age, sex, race, ethn, income, kid_length, kid_mtld, mom_length, mom_mtld)
+        left_join(y = mtld_filter(mom_mtld),by = c("subject", "session")) %>%
+        rename(k_mtld = mtld.x,
+               k_length = length.x,
+               m_mtld = mtld.y,
+               m_length = length.y) %>%
+        left_join(y = session_age, by = c("session")) %>%
+        left_join(y = subjs, by = c("subject")) %>%
+        filter(lesion == "") %>% ##only keep typically-developing children
+        left_join(visits) %>%
+        select(subject, session, age, income, kid_length, kid_mtld, mom_length, mom_mtld)
 ```
 
 * Measure MATTR
 ```{r,measure,eval=F, message=FALSE, results='hide', echo=FALSE}
 # create function to measure Lexical diversity with MATTR
 mattr_fun <- function(df) {
-  tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
-  MATTR <- MATTR(tokenized_df)# measure LD
-  mattr <- data_frame(mattr = MATTR@MATTR$MATTR) # get LD measurement
-  length <- data_frame(length = MATTR@tt$num.tokens)  # get length meaasurement
-  merge(x = length,y = mattr, by = NULL) # combine LD and lenghth values
+        tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+        MATTR <- MATTR(tokenized_df)# measure LD
+        mattr <- data_frame(mattr = MATTR@MATTR$MATTR) # get LD measurement
+        length <- data_frame(length = MATTR@tt$num.tokens)  # get length meaasurement
+        merge(x = length,y = mattr, by = NULL) # combine LD and lenghth values
 }
 
 kid_mattr <- map(utter_tokenize, mattr_fun)%>% 
-  bind_rows(.id = "id") %>%
-  separate(col = id, into = c("subject", "session"), sep = "-") %>%
-  mutate(subject = as.integer(subject),
-         session = as.integer(session)) 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) 
 
 mom_mattr <- map(mom_tok, mattr_fun)%>% 
-  bind_rows(.id = "id") %>%
-  separate(col = id, into = c("subject", "session"), sep = "-") %>%
-  mutate(subject = as.integer(subject),
-         session = as.integer(session)) 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) 
 
 
 # filter child with at least 3 observations
 mattr_filter <- function(df) {
-  nld <- aggregate(df$mattr, by = list(subject = df$subject),length)
-  nchild <- nld$subject[(nld$x > 2)]
-  df <- df %>%
-    filter(subject %in% nchild) %>%
-    group_by(subject)
-  return(df)
+        nld <- aggregate(df$mattr, by = list(subject = df$subject),length)
+        nchild <- nld$subject[(nld$x > 2)]
+        df <- df %>%
+                filter(subject %in% nchild) %>%
+                group_by(subject)
+        return(df)
 }
 
 
 # merge data
 mattr_data <- mattr_filter(kid_mattr) %>%
-  left_join(y=mattr_filter(mom_mattr),by = c("subject", "session"))%>%
-  left_join(session_age)%>%
-  rename(kid_mattr = mattr.x,
-         mom_mattr = mattr.y,
-         kid_length = length.x,
-         mom_length = length.y)%>%
-  ungroup()%>%
-  filter(complete.cases(.))
+        left_join(y=mattr_filter(mom_mattr),by = c("subject", "session"))%>%
+        left_join(session_age)%>%
+        rename(k_mattr = mattr.x,
+               m_mattr = mattr.y,
+               k_length = length.x,
+               m_length = length.y)%>%
+        ungroup()%>%
+        filter(complete.cases(.))
 
 ```
 
 * Measure TTR (Type-Token ratio)
 ```{r}
 ttr_fun <- function(df) {
-  tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
-  TTR <- TTR(tokenized_df)# measure LD
-  ttr <- data_frame(ttr = TTR@TTR) # get LD measurement
-  length <- data_frame(length = TTR@tt$num.tokens)  # get length meaasurement
-  merge(x = length, y = ttr, by = NULL) # combine LD and lenghth values
+        tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+        TTR <- TTR(tokenized_df)# measure LD
+        ttr <- data_frame(ttr = TTR@TTR) # get LD measurement
+        length <- data_frame(length = TTR@tt$num.tokens)  # get length meaasurement
+        merge(x = length, y = ttr, by = NULL) # combine LD and lenghth values
 }
 
 
 kid_ttr <- map(utter_tokenize, ttr_fun)%>% 
-  bind_rows(.id = "subject") %>%
-  separate(col = subject, into = c("subject","session"), sep = "-") %>%
-  mutate(subject = as.integer(subject),
-         session = as.integer(session)) 
+        bind_rows(.id = "subject") %>%
+        separate(col = subject, into = c("subject","session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) 
 
 mom_ttr <- map(mom_tok, ttr_fun)%>% 
-  bind_rows(.id = "subject") %>%
-  separate(col = subject, into = c("subject","session"), sep = "-") %>%
-  mutate(subject = as.integer(subject),
-         session = as.integer(session))
+        bind_rows(.id = "subject") %>%
+        separate(col = subject, into = c("subject","session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session))
 
 
 ttr_filter <- function(df) {
-  nld <- aggregate(df$ttr, by = list(subject = df$subject),length)
-  nchild <- nld$subject[(nld$x > 2)]
-  df <- df %>%
-    filter(subject %in% nchild) %>%
-    group_by(subject)
-  return(df)
+        nld <- aggregate(df$ttr, by = list(subject = df$subject),length)
+        nchild <- nld$subject[(nld$x > 2)]
+        df <- df %>%
+                filter(subject %in% nchild) %>%
+                group_by(subject)
+        return(df)
 }
 
 ttr_data <- ttr_filter(kid_ttr)%>%
-  left_join(y=ttr_filter(mom_ttr), by = c("subject", "session")) %>%
-  left_join(session_age)%>%
-  ungroup() %>%
-  filter(complete.cases(.)) %>%
-  rename(kid_ttr = ttr.x,
-         mom_ttr = ttr.y,
-         kid_length = length.x,
-         mom_length = length.y) 
+        left_join(y=ttr_filter(mom_ttr), by = c("subject", "session")) %>%
+        left_join(session_age)%>%
+        ungroup() %>%
+        filter(complete.cases(.)) %>%
+        rename(k_ttr = ttr.x,
+               m_ttr = ttr.y,
+               k_length = length.x,
+               m_length = length.y) 
 ```
 
 * Measure vocd-D 
 ```{r,measure,eval=F, message=FALSE, results='hide', echo=FALSE}
 # create function to measure Lexical diversity with VOCD-D
 vocd_fun <- function(df) {
-  tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
-  HDD <- HDD(tokenized_df)# measure LD
-  vocd <- data_frame(vocd = HDD@HDD$HDD) # get LD measurement
-  length <- data_frame(length = HDD@tt$num.tokens)  # get length meaasurement
-  merge(x = length,y = vocd, by = NULL) # combine LD and lenghth values
+        tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+        HDD <- HDD(tokenized_df)# measure LD
+        vocd <- data_frame(vocd = HDD@HDD$HDD) # get LD measurement
+        length <- data_frame(length = HDD@tt$num.tokens)  # get length meaasurement
+        merge(x = length,y = vocd, by = NULL) # combine LD and lenghth values
 }
 
 kid_vocd <- map(utter_tokenize, vocd_fun)%>% 
-  bind_rows(.id = "id") %>%
-  separate(col = id, into = c("subject", "session"), sep = "-") %>%
-  mutate(subject = as.integer(subject),
-         session = as.integer(session)) 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) 
 
 mom_vocd <- map(mom_tok, vocd_fun)%>% 
-  bind_rows(.id = "id") %>%
-  separate(col = id, into = c("subject", "session"), sep = "-") %>%
-  mutate(subject = as.integer(subject),
-         session = as.integer(session)) 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) 
 
 # filter child with at least 3 observations
 vocd_filter <- function(df) {
-  nld <- aggregate(df$vocd, by = list(subject = df$subject),length)
-  nchild <- nld$subject[(nld$x > 2)]
-  df <- df %>%
-    filter(subject %in% nchild) %>%
-    group_by(subject)
-  return(df)
+        nld <- aggregate(df$vocd, by = list(subject = df$subject),length)
+        nchild <- nld$subject[(nld$x > 2)]
+        df <- df %>%
+                filter(subject %in% nchild) %>%
+                group_by(subject)
+        return(df)
 }
 
 
 vocd_data <- vocd_filter(kid_vocd) %>%
-  left_join(y = vocd_filter(mom_vocd),by = c("subject", "session"))%>%
-  rename(kid_vocd = vocd.x,
-         mom_vocd = vocd.y,
-         kid_length = length.x,
-         mom_length = length.y)%>%
-  ungroup()%>%
-  filter(complete.cases(.)) %>%
-  left_join(session_age)
+        left_join(y = vocd_filter(mom_vocd),by = c("subject", "session"))%>%
+        rename(k_vocd = vocd.x,
+               m_vocd = vocd.y,
+               k_length = length.x,
+               m_length = length.y)%>%
+        ungroup()%>%
+        filter(complete.cases(.)) %>%
+        left_join(session_age)
 ```
 
-* Measure MLU
+* Get MLU data
 ```{r}
 kid_mlu <- measures %>%
-  filter(speaker == "C")%>%
-  rename(kid_mlu = mlu) %>%
-  select(subject, session, kid_mlu)
+        filter(speaker == "C")%>%
+        rename(k_mlu = mlu)%>%
+        select(-c(income, protocol, speaker))
 
 mom_mlu <- measures %>%
-  filter(speaker == "P")%>%
-  rename(mom_mlu = mlu) %>%
-  select(subject, session, mom_mlu)
-
-mlu_data <- kid_mlu %>%
-  left_join(mom_mlu)%>%
-  filter(complete.cases(.))%>%
-  left_join(session_age)
+        filter(speaker == "P")%>%
+        rename(m_mlu = mlu)%>%
+        select(-c(income, protocol, speaker))
 ```
 
 * Get PPVT&CDI data
@@ -322,61 +314,61 @@ mlu_data <- kid_mlu %>%
 # load LDP data
 ldp_cdi <- read_csv("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/cdi.csv")
 ldp_ppvt <- read_csv("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ppvt.csv")
-  
+
 # filter children with at least 2 observations
 filter_func <- function(df) {
-  num <- aggregate(df$vocab,
-  by = list(subject = df$subject),length)
-  nchild <- num$subject[(num$x > 1)]
-  df <- df %>%
-  filter(subject %in% nchild) %>%
-  group_by(subject)
-  return(df)
+        num <- aggregate(df$vocab,
+                         by = list(subject = df$subject),length)
+        nchild <- num$subject[(num$x > 1)]
+        df <- df %>%
+                filter(subject %in% nchild) %>%
+                group_by(subject)
+        return(df)
 }
 
 
 ldp_ppvt <- ldp_ppvt %>%
-  rename(subject = `I Home Visit Info::subject_number`)%>%
-  mutate(vocab = as.numeric(`ppvt_percentile`)) %>%
-  filter_func(.)%>%
-  select(-c(ppvt))%>%
-  rename(ppvt = vocab)%>%
-  select(subject, session, ppvt)
-  
-  
+        rename(subject = `I Home Visit Info::subject_number`)%>%
+        mutate(vocab = as.numeric(`ppvt_percentile`)) %>%
+        filter_func(.)%>%
+        select(-c(ppvt))%>%
+        rename(k_ppvt = vocab)%>%
+        select(subject, session, ppvt)
+
+
 ldp_cdi <- ldp_cdi %>%
-  rename(age = `cdis_subjectage`,
-         subject = `I Home Visit Info::subject_number`,
-         vocab = `Number of words`)%>%
-  filter(!is.na(age))%>%
-  filter_func(.)%>%
-  mutate(sentence = as.numeric(`Sentence complexity`),
-         session = ifelse(age <=16,1,
-                          ifelse(age<=20,2,
-                          ifelse(age<=24,3,
-                          ifelse(age<=28,4,
-                          ifelse(age<=32,5,
-                          ifelse(age<=36,6,
-                          ifelse(age<=40,7))))))))%>%
-  rename(cdi =vocab)%>%
-  select(subject, session, cdi, sentence)
+        rename(age = `cdis_subjectage`,
+               subject = `I Home Visit Info::subject_number`,
+               vocab = `Number of words`)%>%
+        filter(!is.na(age))%>%
+        filter_func(.)%>%
+        mutate(sentence = as.numeric(`Sentence complexity`),
+               session = ifelse(age <=16,1,
+                                ifelse(age<=20,2,
+                                       ifelse(age<=24,3,
+                                              ifelse(age<=28,4,
+                                                     ifelse(age<=32,5,
+                                                            ifelse(age<=36,6,
+                                                                   ifelse(age<=40,7))))))))%>%
+        rename(k_cdi =vocab)%>%
+        select(subject, session, k_cdi, sentence)
 ```  
 
 * Merge data
 ```{r}
 # combine CDI and PPVT with other datasets by `session`
 ldp_all <- mtld_data %>%
-  left_join(mattr_data) %>%
-  left_join(vocd_data) %>%
-  left_join(ttr_data)%>%
-  left_join(mlu_data)%>%
-  filter(complete.cases(.))%>%
-  left_join(ldp_cdi,by =c("subject","session"))%>%
-  left_join(ldp_ppvt)%>%
-  left_join(session_age)%>%
-  select(-c(sex, race, ethn, income))%>%
-  group_by(subject)
-  
+        left_join(mattr_data) %>%
+        left_join(vocd_data) %>%
+        left_join(ttr_data)%>%
+        filter(complete.cases(.))%>%
+        left_join(ldp_cdi,by =c("subject","session"))%>%
+        left_join(ldp_ppvt)%>%
+        left_join(kid_mlu)%>%
+        left_join(mom_mlu)%>%
+        left_join(session_age)%>%
+        group_by(subject)
+
 
 write_feather(ldp_all,"/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_all.feather" )
 ```
