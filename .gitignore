@@ -3,5 +3,7 @@
 .RData
 .Ruserdata
 
-# Paper 
+# Paper
 *.tex
+
+.DS_Store

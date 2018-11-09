@@ -78,6 +78,18 @@ utter_kid <- utter %>%
         left_join(session_age)
 
 
+# remove unintelligible utterances
+murmur = c("xxx", "yyy", "yyy_yyy","---")
+
+utter_kid <- utter %>%
+        filter(!c_utts %in% murmur) %>%
+        mutate(c_utts = removeWords(c_utts, murmur),
+               c_utts = gsub("[^[:alnum:]]", " ", c_utts),
+               c_utts = tolower(c_utts)) %>%
+        filter(!grepl("^\\s*$", c_utts)) %>%
+        left_join(session_age)
+
+
 # collapse utterances at one month to one row
 utter_collapsed <- utter_kid %>%
         filter(subject == subject) %>%
@@ -86,7 +98,11 @@ utter_collapsed <- utter_kid %>%
         summarise(utts = paste0(c_utts, collapse = " ")) 
 
 # keep only complete rows
+<<<<<<< HEAD
 kid_tokenized <- utter_collapsed[complete.cases(utter_collapsed),] %>%
+=======
+utter_tokenize <- utter_collapsed[complete.cases(utter_collapsed),] %>%
+>>>>>>> 38d26e68b5c0a2856499a8e78372a33bb5dd5990
         split(paste0(.$subject, "-", .$session, "-"))  
 
 # Get Mother's speech
@@ -105,12 +121,119 @@ mom_col <- utter_mom %>%
         summarise(utts = paste0(p_utts, collapse = " "))
 
 # keep only complete rows
+<<<<<<< HEAD
 mom_tokenized <- mom_col[complete.cases(mom_col),] %>%
         split(paste0(.$subject, "-", .$session, "-", .$age)) 
+=======
+mom_tok <- mom_col[complete.cases(mom_col),] %>%
+        split(paste0(.$subject, "-", .$session, "-", .$age)) 
+```
+
+
+* Measure MTLD
+```{r, message=F, eval=F, echo=F}
+# write a function to measure LD with MTLD
+mtld_fun <- function(df) {
+        tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+        MTLD <- MTLD(tokenized_df)# measure LD
+        mtld <- data_frame(mtld = MTLD@MTLD$MTLD) # get LD measurement
+        length <- data_frame(length = MTLD@tt$num.tokens)  # get length meaasurement
+        merge(x = length,y = mtld, by = NULL) # combine LD and lenghth values
+}
+
+# measure and filter accurate data
+kid_mtld <- map(utter_tokenize, mtld_fun)%>% 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) %>%
+        filter(!mtld == as.numeric("inf")) 
+
+
+mom_mtld <- map(mom_tok, mtld_fun)%>% 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) %>%
+        filter(!mtld == as.numeric("inf")) 
+
+# filter kids' data with at least 3 observeations
+mtld_filter <- function(df) {
+        nmtld <- aggregate(df$mtld,
+                           by = list(subject = df$subject),length)
+        nchild <- nmtld$subject[(nmtld$x > 2)]
+        df <- df %>%
+                filter(subject %in% nchild) %>%
+                group_by(subject)
+        return(df)
+}
+
+# merge data
+mtld_data <- mtld_filter(kid_mtld) %>%
+        left_join(y = mtld_filter(mom_mtld),by = c("subject", "session")) %>%
+        rename(k_mtld = mtld.x,
+               k_length = length.x,
+               m_mtld = mtld.y,
+               m_length = length.y) %>%
+        left_join(y = session_age, by = c("session")) %>%
+        left_join(y = subjs, by = c("subject")) %>%
+        filter(lesion == "") %>% ##only keep typically-developing children
+        left_join(visits) %>%
+        select(subject, session, age, income, kid_length, kid_mtld, mom_length, mom_mtld)
+```
+
+* Measure MATTR
+```{r,measure,eval=F, message=FALSE, results='hide', echo=FALSE}
+# create function to measure Lexical diversity with MATTR
+mattr_fun <- function(df) {
+        tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+        MATTR <- MATTR(tokenized_df)# measure LD
+        mattr <- data_frame(mattr = MATTR@MATTR$MATTR) # get LD measurement
+        length <- data_frame(length = MATTR@tt$num.tokens)  # get length meaasurement
+        merge(x = length,y = mattr, by = NULL) # combine LD and lenghth values
+}
+
+kid_mattr <- map(utter_tokenize, mattr_fun)%>% 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) 
+
+mom_mattr <- map(mom_tok, mattr_fun)%>% 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) 
+
+
+# filter child with at least 3 observations
+mattr_filter <- function(df) {
+        nld <- aggregate(df$mattr, by = list(subject = df$subject),length)
+        nchild <- nld$subject[(nld$x > 2)]
+        df <- df %>%
+                filter(subject %in% nchild) %>%
+                group_by(subject)
+        return(df)
+}
+
+
+# merge data
+mattr_data <- mattr_filter(kid_mattr) %>%
+        left_join(y=mattr_filter(mom_mattr),by = c("subject", "session"))%>%
+        left_join(session_age)%>%
+        rename(k_mattr = mattr.x,
+               m_mattr = mattr.y,
+               k_length = length.x,
+               m_length = length.y)%>%
+        ungroup()%>%
+        filter(complete.cases(.))
+
+>>>>>>> 38d26e68b5c0a2856499a8e78372a33bb5dd5990
 ```
 
 * Measure lexical diversity
 ```{r}
+<<<<<<< HEAD
 # write a function utilizing target indices to measure lexical diversity
 get_lex_div <- function(df){
         
@@ -155,6 +278,95 @@ mom_ld <- map(mom_tokenized, get_lex_div) %>%
         filter(!mtld == as.numeric("Inf"))
 ```
 
+=======
+ttr_fun <- function(df) {
+        tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+        TTR <- TTR(tokenized_df)# measure LD
+        ttr <- data_frame(ttr = TTR@TTR) # get LD measurement
+        length <- data_frame(length = TTR@tt$num.tokens)  # get length meaasurement
+        merge(x = length, y = ttr, by = NULL) # combine LD and lenghth values
+}
+
+
+kid_ttr <- map(utter_tokenize, ttr_fun)%>% 
+        bind_rows(.id = "subject") %>%
+        separate(col = subject, into = c("subject","session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) 
+
+mom_ttr <- map(mom_tok, ttr_fun)%>% 
+        bind_rows(.id = "subject") %>%
+        separate(col = subject, into = c("subject","session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session))
+
+
+ttr_filter <- function(df) {
+        nld <- aggregate(df$ttr, by = list(subject = df$subject),length)
+        nchild <- nld$subject[(nld$x > 2)]
+        df <- df %>%
+                filter(subject %in% nchild) %>%
+                group_by(subject)
+        return(df)
+}
+
+ttr_data <- ttr_filter(kid_ttr)%>%
+        left_join(y=ttr_filter(mom_ttr), by = c("subject", "session")) %>%
+        left_join(session_age)%>%
+        ungroup() %>%
+        filter(complete.cases(.)) %>%
+        rename(k_ttr = ttr.x,
+               m_ttr = ttr.y,
+               k_length = length.x,
+               m_length = length.y) 
+```
+
+* Measure vocd-D 
+```{r,measure,eval=F, message=FALSE, results='hide', echo=FALSE}
+# create function to measure Lexical diversity with VOCD-D
+vocd_fun <- function(df) {
+        tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE) #tokenize texts
+        HDD <- HDD(tokenized_df)# measure LD
+        vocd <- data_frame(vocd = HDD@HDD$HDD) # get LD measurement
+        length <- data_frame(length = HDD@tt$num.tokens)  # get length meaasurement
+        merge(x = length,y = vocd, by = NULL) # combine LD and lenghth values
+}
+
+kid_vocd <- map(utter_tokenize, vocd_fun)%>% 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) 
+
+mom_vocd <- map(mom_tok, vocd_fun)%>% 
+        bind_rows(.id = "id") %>%
+        separate(col = id, into = c("subject", "session"), sep = "-") %>%
+        mutate(subject = as.integer(subject),
+               session = as.integer(session)) 
+
+# filter child with at least 3 observations
+vocd_filter <- function(df) {
+        nld <- aggregate(df$vocd, by = list(subject = df$subject),length)
+        nchild <- nld$subject[(nld$x > 2)]
+        df <- df %>%
+                filter(subject %in% nchild) %>%
+                group_by(subject)
+        return(df)
+}
+
+
+vocd_data <- vocd_filter(kid_vocd) %>%
+        left_join(y = vocd_filter(mom_vocd),by = c("subject", "session"))%>%
+        rename(k_vocd = vocd.x,
+               m_vocd = vocd.y,
+               k_length = length.x,
+               m_length = length.y)%>%
+        ungroup()%>%
+        filter(complete.cases(.)) %>%
+        left_join(session_age)
+```
+
+>>>>>>> 38d26e68b5c0a2856499a8e78372a33bb5dd5990
 * Get MLU data
 ```{r}
 kid_mlu <- measures %>%
@@ -226,6 +438,7 @@ measure_filter <- function(df) {
 }
 
 # combine CDI and PPVT with other datasets by `session`
+<<<<<<< HEAD
 ldp_all <- measure_filter(kid_ld) %>%
         left_join(measure_filter(mom_ld))%>%
         left_join(kid_mlu)%>%
@@ -234,6 +447,19 @@ ldp_all <- measure_filter(kid_ld) %>%
         left_join(ldp_ppvt)%>%
         left_join(session_age)%>%
         unique()%>%
+=======
+ldp_all <- mtld_data %>%
+        left_join(mattr_data) %>%
+        left_join(vocd_data) %>%
+        left_join(ttr_data)%>%
+        filter(complete.cases(.))%>%
+        left_join(ldp_cdi,by =c("subject","session"))%>%
+        left_join(ldp_ppvt)%>%
+        left_join(kid_mlu)%>%
+        left_join(mom_mlu)%>%
+        left_join(session_age)%>%
+        group_by(subject)
+>>>>>>> 38d26e68b5c0a2856499a8e78372a33bb5dd5990
 
 
 write_feather(ldp_all,"/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_all.feather" )
