@@ -137,6 +137,7 @@ get_lex_div <- function(df){
        
 }
 
+
 kid_ld <- map(kid_tokenized, get_lex_div) %>%
         bind_rows(.id = "subject") %>%
         separate(col = subject, into = c("subject", "age"), sep = "-") %>%
