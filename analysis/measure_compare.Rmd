@@ -27,7 +27,8 @@ library(childesr)
 
 ```{r, message=F, warning=F}
 # Load data
-ldp_all <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_all.feather")
+ldp_all <- read_feather(here("data/ldp_all.feather"))%>%
+           filter(session != 80)
 ```
 
 * Plot Growth Curve
@@ -48,16 +49,6 @@ ldp_all%>%
              subtitle = "LDP: 14 ~ 30 Months",
              y = "lexical diversity (scaled)")
 
-############ plots of all measures are linear, except for TTR
-ldp_all %>%
-        ggplot(., aes(x = age, y = k_ttr)) +
-        geom_point() +
-        geom_smooth(se=F)+
-        theme_classic()
-
-ldp_all %>%
-        summarise(cor(log(age), k_ttr))
-
 
 # compare with PPVT 
 ldp_all%>%
@@ -68,7 +59,7 @@ ldp_all%>%
         geom_smooth(aes(x=age,y=scale(k_mattr), color="mattr"), se=F)+
         geom_smooth(aes(x=age,y=scale(k_vocd), color="vocd"), se=F)+
         geom_smooth(aes(x=age,y=scale(k_mtld), color="mtld"), se=F)+
-        geom_smooth(aes(x=age, y=scale(k_ppvt), color="PPVT"),se=F)+
+        geom_smooth(aes(x=age, y=scale(ppvt), color="PPVT"),se=F)+
         geom_smooth(aes(x=age,y=scale(k_mlu), color="mlu"), se=F)+
         theme_classic()+
         labs(title = "Compare Lexical Diversity Indices with PPVT", 
@@ -100,8 +91,8 @@ ldp_all %>%
 # MTLD vs vocd-D (Mother)
 ldp_all %>%
         ggplot()+
-        geom_smooth(aes(x=age,y=mom_vocd, color="vocd"), se=F)+
-        geom_smooth(aes(x=age,y=mom_mtld, color="mtld"), se=F)+
+        geom_smooth(aes(x=age,y=m_vocd, color="vocd"), se=F)+
+        geom_smooth(aes(x=age,y=m_mtld, color="mtld"), se=F)+
         theme_classic()+
         labs(title = "Mother's Growth Curve by MTLD & vocd-D",
              subtitle = "LDP: 14 ~ 58 Months",
@@ -122,26 +113,29 @@ get_params <- function(df) {
         effects <- subj_effects %>%
                 rename(intercept = `(Intercept)`,
                        slope = `log(age)`) %>%
-                mutate(subject = as.numeric(rownames(.))) %>%
-                right_join(df %>% select(subject, person, measure) %>% distinct())
+                mutate(subject = as.numeric(subject)) %>%
+                right_join(df %>% select(subject, person, measure) %>% distinct(.))
 }
 
 ldp_intercept <- ldp_all %>%
-        select(-k_length, -m_length, -income, -mean_income) %>%
+        rename(k_ppvt = ppvt,
+               k_sen = sentence)%>%
+        select(-c(income, race, sex, ethn, lesion, project, active, control, note)) %>%
         group_by(subject)%>%
         gather(measure, value, k_mtld:k_ppvt) %>%
         separate(measure, c("person", "measure"), "_") %>%
         split(paste0(.$person, "_", .$measure)) %>%
         map(get_params) %>%
         bind_rows(.id = "id") %>%
-        select(-id)
+        select(-id)%>%
+        filter(complete.cases(.))
 
-write_feather(ldp_intercept, "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_intercept2.feather")
+write_feather(ldp_intercept, "/Users/Yawen/Documents/Github/CHILDES_Lexical-Diversity/data/ldp_intercept.feather")
 ```
 
 * Variance 
 ```{r, message=F, warning=F}
-ldp_intercept <- read_feather("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_intercept2.feather")
+ldp_intercept <- read_feather(here("data/ldp_intercept.feather"))
 
 ldp_intercept %>%
         filter(person == "k")%>%
@@ -149,7 +143,7 @@ ldp_intercept %>%
         group_by(measure, type) %>%
         summarise(mean = mean(value, na.rm=TRUE),
                   sd = sd(value, na.rm=TRUE),
-                  coef_of_var =sd/mean)
+                  coef_of_var =sd/mean) #other way to report var?
 
 ldp_intercept %>%
         filter(person == "m")%>%

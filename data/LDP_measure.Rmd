@@ -20,7 +20,8 @@ library(tm)
 library(lme4)
 library(dplyr)
 library(feather)
-library(sjPlot)
+library(koRpus.lang.en)
+
 ```
 
 * Get LDP data
@@ -42,8 +43,8 @@ subjs <- tbl(ldp, "subjects") %>%
 visits <- tbl(ldp, "visits") %>%
         collect() %>%
         group_by(subject) %>%
-        mutate(income = replace(income, is.na(income), floor(mean(income, na.rm = T)))) %>%
-        select(subject, session, income)
+        mutate(income = replace(income, is.na(income), floor(mean(income, na.rm = T))),
+               age = floor(child_age_months)) 
 
 # Get measures data
 measures <- tbl(ldp, "measures") %>%
@@ -54,11 +55,12 @@ measures <- tbl(ldp, "measures") %>%
 # complete missing Age data according to Session data
 ## because age column is NOT completely coded, but Session column is complete
 session_age <- measures %>%
-        select("session", "child_age_months") %>%
-        mutate(child_age_months = floor(child_age_months)) %>%
-        rename(age = child_age_months) %>%
-        unique(.) %>%
-        head(n=12)
+        select("session","age") %>%
+        filter(!is.na(age))%>%
+        group_by(session)%>%
+        mutate(age = round(mean(age)))%>%
+        unique(.)
+
 
 write_feather(session_age,
               "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/session_age.feather")
@@ -83,12 +85,13 @@ utter_collapsed <- utter_kid %>%
         filter(subject == subject) %>%
         filter(session == session) %>%
         group_by(subject, session) %>%
-        summarise(utts = paste0(c_utts, collapse = " ")) 
+        summarise(utts = paste0(c_utts, collapse = " ")) %>%
+        left_join(select(subjs, subject, lesion,sex,race))%>%
+        filter(!lesion %in% c("L","R"))%>%
+        select(-lesion)
 
 # keep only complete rows
 kid_tokenized <- utter_collapsed[complete.cases(utter_collapsed),] %>%
-
-        utter_tokenize <- utter_collapsed[complete.cases(utter_collapsed),] %>%
         split(paste0(.$subject, "-", .$session, "-"))  
 
 # Get Mother's speech
@@ -108,9 +111,6 @@ mom_col <- utter_mom %>%
 
 # keep only complete rows
 mom_tokenized <- mom_col[complete.cases(mom_col),] %>%
-        split(paste0(.$subject, "-", .$session, "-", .$age)) 
-
-mom_tok <- mom_col[complete.cases(mom_col),] %>%
         split(paste0(.$subject, "-", .$session, "-", .$age)) 
 ```
 
@@ -146,19 +146,29 @@ get_lex_div <- function(df){
 
 kid_ld <- map(kid_tokenized, get_lex_div) %>%
         bind_rows(.id = "subject") %>%
-        separate(col = subject, into = c("subject", "age"), sep = "-") %>%
+        separate(col = subject, into = c("subject", "session"), sep = "-") %>%
         mutate(subject = as.numeric(subject),
-               age = as.numeric(age)) %>%
+               session = as.numeric(session)) %>%
         filter(length >=100)%>%
-        filter(!mtld == as.numeric("Inf"))
+        filter(!mtld == as.numeric("Inf"))%>%
+        rename(k_mtld = mtld,
+               k_vocd = vocd,
+               k_ttr = ttr,
+               k_mattr = mattr,
+               k_length = length)
 
 mom_ld <- map(mom_tokenized, get_lex_div) %>%
         bind_rows(.id = "subject") %>%
-        separate(col = subject, into = c("subject", "age"), sep = "-") %>%
+        separate(col = subject, into = c("subject", "session"), sep = "-") %>%
         mutate(subject = as.numeric(subject),
-               age = as.numeric(age)) %>%
+               session = as.numeric(session))%>%
         filter(length >=100)%>%
         filter(!mtld == as.numeric("Inf"))
+        rename(m_mtld = mtld,
+               m_vocd = vocd,
+               m_ttr = ttr,
+               m_mattr = mattr,
+               m_length = length)
 ```
 
 
@@ -185,7 +195,7 @@ ldp_ppvt <- ldp_ppvt %>%
         mutate(vocab = as.numeric(`ppvt_percentile`)) %>%
         filter_func(.)%>%
         select(-c(ppvt))%>%
-        rename(k_ppvt = vocab)%>%
+        rename(ppvt = vocab)%>%
         select(subject, session, ppvt)
 
 
@@ -207,11 +217,31 @@ ldp_cdi <- ldp_cdi %>%
         select(subject, session, k_cdi, sentence)
 ```  
 
+* Get MLU data
+```{r}
+kid_mlu <- measures %>%
+        select(subject, session, speaker, word_types, mlu)%>%
+        filter(speaker == "C")%>%
+        group_by(subject, session)%>%
+        select(-speaker)%>%
+        rename(k_mlu = mlu,
+               k_type = word_types)
+
+mom_mlu <- measures %>%
+        select(subject, session, speaker, word_types, mlu)%>%
+        filter(speaker == "P")%>%
+        group_by(subject, session)%>%
+        select(-speaker)%>%
+        rename(m_mlu = mlu,
+               m_type = word_types)
+        
+```
+
 * Merge data
 ```{r}
 # filter kids' data with at least 5 observeations
 measure_filter <- function(df) {
-        nld <- aggregate(df$kid_mtld, by = list(subject = df$subject),length)
+        nld <- aggregate(df$k_mtld, by = list(subject = df$subject),length)
         nchild <- nld$subject[(nld$x > 4)]
         df <- df %>%
                 filter(subject %in% nchild) %>%
@@ -221,26 +251,15 @@ measure_filter <- function(df) {
 
 # combine CDI and PPVT with other datasets by `session`
 ldp_all <- measure_filter(kid_ld) %>%
-        left_join(measure_filter(mom_ld))%>%
+        left_join(mom_ld)%>%
         left_join(kid_mlu)%>%
         left_join(mom_mlu)%>%
-        left_join(ldp_cdi,by =c("subject","session"))%>%
-        left_join(ldp_ppvt)%>%
+        left_join(ldp_cdi)%>%
+        left_join(ldp_ppvt)%>% 
+        left_join(select(measures,subject, session, income))%>%
         left_join(session_age)%>%
-        unique()%>%
+        left_join(select(subjs,-dob))%>%
+        unique()
 
-ldp_all <- mtld_data %>%
-        left_join(mattr_data) %>%
-        left_join(vocd_data) %>%
-        left_join(ttr_data)%>%
-        filter(complete.cases(.))%>%
-        left_join(ldp_cdi,by =c("subject","session"))%>%
-        left_join(ldp_ppvt)%>%
-        left_join(kid_mlu)%>%
-        left_join(mom_mlu)%>%
-        left_join(session_age)%>%
-        group_by(subject)
-
-
-write_feather(ldp_all,"/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp_all.feather" )
+write_feather(ldp_all,"/Users/Yawen/Documents/Github/CHILDES_Lexical-Diversity/data/ldp_all.feather" )
 ```
