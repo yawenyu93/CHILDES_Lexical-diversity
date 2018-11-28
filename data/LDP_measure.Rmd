@@ -34,10 +34,13 @@ ldp <- src_sqlite("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp.db")
 utter <- tbl(ldp, "utterances") %>%
         collect() 
 
-# Get all participants
+# Get participants info and drop kids with lesion
 subjs <- tbl(ldp, "subjects") %>%
         collect() %>%
-        rename(subject = id)
+        rename(subject = id)%>%
+        mutate(lesion = if_else(lesion == "", as.character(NA), lesion))%>%
+        filter(is.na(lesion))
+        
 
 # Get visit data
 visits <- tbl(ldp, "visits") %>%
@@ -85,10 +88,8 @@ utter_collapsed <- utter_kid %>%
         filter(subject == subject) %>%
         filter(session == session) %>%
         group_by(subject, session) %>%
-        summarise(utts = paste0(c_utts, collapse = " ")) %>%
-        left_join(select(subjs, subject, lesion,sex,race))%>%
-        filter(!lesion %in% c("L","R"))%>%
-        select(-lesion)
+        summarise(utts = paste0(c_utts, collapse = " ")) 
+        
 
 # keep only complete rows
 kid_tokenized <- utter_collapsed[complete.cases(utter_collapsed),] %>%
