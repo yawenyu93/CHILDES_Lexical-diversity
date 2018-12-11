@@ -18,101 +18,138 @@ library(koRpus)
 library(tidyverse)
 library(tm)
 library(lme4)
-library(dplyr)
 library(feather)
 library(koRpus.lang.en)
-
+library(here)
+library(tidytext)
+library(anonymizer)
 ```
 
-* Get LDP data
-```{r, eval=FALSE, message=FALSE, results='hide', echo=FALSE}
+```{r ldp_functions}
+source(here("data/read_ldp.R"))
+```
+
+* Get LDP subjects and demographics
+```{r, eval=T, message=FALSE}
+MIN_VISITS <- 5
+
+Mode <- function(x) {
+  x <- x[!is.na(x)]
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
 #### Load and Clean Data
 # Read in LDP data
-ldp <- src_sqlite("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ldp.db")
+ldp <- connect_to_ldp()
 
-# Get all utterances
-utter <- tbl(ldp, "utterances") %>%
-        collect() 
+demos <- get_table(ldp, "subjects") %>%
+        filter(lesion == "") %>%
+        select(id, sex, race, ethn) %>%
+        collect()
 
-# Get participants info and drop kids with lesion
-subjs <- tbl(ldp, "subjects") %>%
-        collect() %>%
-        rename(subject = id)%>%
-        mutate(lesion = if_else(lesion == "", as.character(NA), lesion))%>%
-        filter(is.na(lesion))
-        
+visits <- get_table(ldp, "home_visits") %>%
+  distinct(id, age_years, subject, visit_type, completed, income_category, 
+           mother_education) %>%
+  collect() %>%
+  filter(visit_type != "SB5") %>%
+  mutate(visit_type = as.numeric(gsub("[^0-9]", "", visit_type))) %>%
+  rename(visit = visit_type) %>%
+  mutate(completed = as.logical(completed),
+         income_category = as.numeric(income_category))
 
-# Get visit data
-visits <- tbl(ldp, "visits") %>%
-        collect() %>%
-        group_by(subject) %>%
-        mutate(income = replace(income, is.na(income), floor(mean(income, na.rm = T))),
-               age = floor(child_age_months)) 
+subjs <- visits %>%
+  group_by(subject) %>%
+  summarise(completed = sum(completed),
+            income_category = Mode(income_category),
+            mother_education = Mode(mother_education)) %>%
+  filter(completed >= 5) %>%
+  select(-completed) %>%
+  right_join(demos, by = c("subject" = "id"))
 
-# Get measures data
-measures <- tbl(ldp, "measures") %>%
-        collect() %>%
-        select(-last_update) %>%
-        left_join(y=visits, by = c("subject", "session")) 
-        
-# complete missing Age data according to Session data
-## because age column is NOT completely coded, but Session column is complete
-session_age <- measures %>%
-        select("session","age") %>%
-        filter(!is.na(age))%>%
-        group_by(session)%>%
-        mutate(age = round(mean(age)))%>%
-        unique(.)
-
-
-write_feather(session_age,
-              "/Users/Yawen/Desktop/lexical diversity/trial5_ldp/session_age.feather")
+session_ages <- visits %>%
+        filter(subject %in% subjs$subject, completed) %>%
+        select(subject, visit, age_years) %>%
+        rename(age = age_years) %>%
+        arrange(subject, visit)
 ```
+
+Get utterances
+```{r load_utterances}
+# Get all utterances
+utter <- get_table(ldp, "utterances") %>%
+        filter(subject %in% subjs$subject) %>%
+        select(subject, session, row, p_chat, c_chat) %>%
+        collect() 
+```
+
 
 * Clean language data
 ```{r}
 # remove unintelligible utterances
-murmur = c("xxx", "yyy", "yyy_yyy","---")
+murmur = c("xxx", "yyy", "yyy_yyy","---", "\\.\\.\\.")
 
-utter_kid <- utter %>%
-        filter(!c_utts %in% murmur) %>%
-        mutate(c_utts = removeWords(c_utts, murmur),
-               c_utts = gsub("[^[:alnum:]]", " ", c_utts),
-               c_utts = tolower(c_utts)) %>%
-        filter(!grepl("^\\s*$", c_utts)) %>%
-        left_join(session_age)
-
+utter_cleaned <- utter  %>%
+  gather(person, chat, c_chat, p_chat) %>%
+  filter(!is.na(chat),
+         !chat %in% murmur) %>%
+  mutate(chat = gsub("\\+", "", chat), # combine words
+         chat = gsub(" [^[:alnum:]]+", " ", chat), #ending punctuation
+          chat = gsub(", ", " ", chat),  #,
+          chat = gsub("&", " ", chat), #&
+          chat = gsub("_", " ", chat),
+         chat = tolower(chat),
+         chat = removeWords(chat, murmur), 
+         chat = str_trim(chat)) %>% #, # unintelligibles
+  filter(!grepl("^\\s*$", chat)) %>%
+  rename(visit = session) %>%
+  left_join(session_ages)
 
 # collapse utterances at one month to one row
-utter_collapsed <- utter_kid %>%
-        filter(subject == subject) %>%
-        filter(session == session) %>%
-        group_by(subject, session) %>%
-        summarise(utts = paste0(c_utts, collapse = " ")) 
+utter_collapsed <- utter_cleaned %>%
+        group_by(subject, person, visit) %>%
+        summarise(chat = paste0(chat, collapse = " ")) 
         
-
 # keep only complete rows
-kid_tokenized <- utter_collapsed[complete.cases(utter_collapsed),] %>%
-        split(paste0(.$subject, "-", .$session, "-"))  
+utter_split <- utter_collapsed %>%
+  split(paste0(.$subject, "-", .$person, "-", .$visit))  
+```
 
-# Get Mother's speech
-utter_mom <- utter %>%
-        filter(!p_utts %in% murmur) %>%
-        mutate(p_utts = removeWords(p_utts, murmur),
-               p_utts = gsub("[^[:alnum:]]", " ", p_utts),
-               p_utts = tolower(p_utts)) %>%
-        filter(!grepl("^\\s*$", p_utts)) %>%
-        select(subject, session, p_utts)%>%
-        left_join(x=session_age, by = c("session")) 
 
-# collapse each month's utterances to one row
-mom_col <- utter_mom %>%
-        group_by(subject, session, age) %>%
-        summarise(utts = paste0(p_utts, collapse = " "))
+* Get MLU data
+```{r}
 
-# keep only complete rows
-mom_tokenized <- mom_col[complete.cases(mom_col),] %>%
-        split(paste0(.$subject, "-", .$session, "-", .$age)) 
+tokens <- utter_cleaned %>%
+  unnest_tokens(word, chat) 
+
+# non_alphas <- tokens %>%
+#         distinct(word) %>%
+#         mutate(nonalpha = grepl("[^[:alnum:]]", word)) %>%
+#         filter(nonalpha) %>%
+#         arrange(word)
+# 
+# 
+# token_count <- tokens %>%
+#         group_by(subject, visit, person) %>%
+#         summarise(tokens = n())
+# 
+# type_count <- tokens %>%
+#         group_by(subject, visit, person) %>%
+#         distinct(word) %>%
+#         summarise(types = n())
+
+mlu <- tokens %>%
+  group_by(subject, visit, person, row) %>%
+  summarise(n = n()) %>%
+  summarise(mlu = mean(n)) %>%
+  mutate(person = if_else(person == "c_chat", "child", "parent"))
+
+# lang_measures <- full_join(token_count, type_count,
+#                            by = c("subject", "visit", "person")) %>%
+#         full_join(mlu, by = c("subject", "visit", "person")) %>%
+#         mutate(person = if_else(person == "c_chat", "child", "parent"))
+        
+#write_feather(lang_measures, here("data/lang_measures.feather"))
 ```
 
 
@@ -120,58 +157,126 @@ mom_tokenized <- mom_col[complete.cases(mom_col),] %>%
 ```{r}
 # write a function utilizing target indices to measure lexical diversity
 get_lex_div <- function(df){
-        
-        tokenized_df <- koRpus::tokenize(df$utts, format = "obj", lang = "en", tag = TRUE)
+       # print(chat)
+        tokenized_df <- koRpus::tokenize(df$chat, format = "obj", lang = "en", tag = TRUE)
         
         MTLD <- MTLD(tokenized_df)#measure LD
-        mtld <- data_frame(mtld = MTLD@MTLD$MTLD) #get LD measurement
-        length <- data_frame(length = MTLD@tt$num.tokens)  #get length meaasurement
+        mtld <- MTLD@MTLD$MTLD #get LD measurement
         
         MATTR <- MATTR(tokenized_df)
-        mattr <- data_frame(mattr = MATTR@MATTR$MATTR) 
+        mattr <- MATTR@MATTR$MATTR
         
         HDD <- HDD(tokenized_df)
-        vocd <- data_frame(vocd = HDD@HDD$HDD) 
+        vocd <- HDD@HDD$HDD
         
         TTR <- TTR(tokenized_df)
-        ttr <- data_frame(ttr = TTR@TTR) 
+        ttr <- TTR@TTR
         
-        all_ld <- mtld %>%
-                merge(length)%>%
-                merge(vocd)%>%
-                merge(mattr)%>%
-                merge(ttr)
+        tokens <- length(tokens(tokenized_df))
+        types <- length(types(tokenized_df))
+        
+        data_frame(mtld = mtld,
+                   tokens = tokens, 
+                   types = types,
+                   vocd = vocd,
+                   mattr = mattr,
+                   ttr = ttr)
        
 }
 
 
-kid_ld <- map(kid_tokenized, get_lex_div) %>%
-        bind_rows(.id = "subject") %>%
-        separate(col = subject, into = c("subject", "session"), sep = "-") %>%
-        mutate(subject = as.numeric(subject),
-               session = as.numeric(session)) %>%
-        filter(length >=100)%>%
-        filter(!mtld == as.numeric("Inf"))%>%
-        rename(k_mtld = mtld,
-               k_vocd = vocd,
-               k_ttr = ttr,
-               k_mattr = mattr,
-               k_length = length)
+ld <- map(utter_split, get_lex_div) %>%
+  bind_rows(.id = "id") %>%
+  as_data_frame() %>% 
+  filter(mtld != as.numeric("Inf")) %>%
+  separate(id, into = c("subject", "person", "visit"), sep = "-") %>%
+  mutate(subject = as.numeric(subject),
+         visit = as.numeric(visit)) %>%
+  mutate(person = if_else(person == "c_chat", "child", "parent"))
 
-mom_ld <- map(mom_tokenized, get_lex_div) %>%
-        bind_rows(.id = "subject") %>%
-        separate(col = subject, into = c("subject", "session"), sep = "-") %>%
-        mutate(subject = as.numeric(subject),
-               session = as.numeric(session))%>%
-        filter(length >=100)%>%
-        filter(!mtld == as.numeric("Inf"))
-        rename(m_mtld = mtld,
-               m_vocd = vocd,
-               m_ttr = ttr,
-               m_mattr = mattr,
-               m_length = length)
+
 ```
 
+```{r}
+write_feather(ld, here("data/ld_all.feather"))
+```
+
+Get other measures
+```{r load_measures}
+ppvt <- get_table(ldp, "ppvt") %>%
+  collect() %>%
+  select(-id) %>%
+  rename(id = visit) %>%
+  left_join(visits) %>%
+  filter(subject %in% subjs$subject) %>%
+  rename(ppvt = ppvt_raw) %>%
+  select(subject, visit, age_years, ppvt)
+  
+cdi_ws <- get_table(ldp, "cdi_words_and_sentences") %>%
+  select(id, visit, cdis_1a1_num, cdis_2e_num) %>%
+  collect() %>%
+  select(-id) %>%
+  rename(id = visit) %>%
+  left_join(visits) %>%
+  filter(subject %in% subjs$subject) %>%
+  rename(cdi_ws = cdis_1a1_num, sent_comp = cdis_2e_num) %>%
+  select(subject, visit, age_years, cdi_ws, sent_comp) %>%
+  arrange(subject, visit)
+
+syntax <- get_table(ldp, "syntax") %>%
+  collect() %>%
+  select(-id) %>%
+  rename(id = visit) %>%
+  left_join(visits) %>%
+  filter(subject %in% subjs$subject) %>%
+  rename(syntax = syntax_raw) %>%
+  select(subject, visit, age_years, syntax) %>% 
+  arrange(subject, visit)
+
+wppsi <- get_table(ldp, "wppsi_block_design") %>%
+  collect() %>%
+  select(-id) %>%
+  rename(id = visit) %>%
+  left_join(visits) %>%
+  filter(subject %in% subjs$subject) %>%
+  arrange(subject, visit) %>%
+  filter(!is.na(wppsi_block_raw)) %>%
+  select(subject, visit, age_years, wppsi_block_raw) %>%
+  rename(wppsi_block = wppsi_block_raw)
+
+measures <- full_join(ppvt, cdi_ws, by = c("subject", "visit", "age_years")) %>%
+  full_join(syntax, by = c("subject", "visit", "age_years")) %>%
+  full_join(wppsi, by = c("subject", "visit", "age_years")) %>%
+  gather(measure, value, ppvt, cdi_ws, sent_comp, syntax, wppsi_block) %>%
+  filter(!is.na(value)) %>%
+  arrange(subject, measure, visit) %>%
+  mutate(person = "child")
+```
+
+```{r}
+write_feather(measures, here("data/measures.feather"))
+```
+
+Combine data
+```{r combine}
+ldp_all <- ld %>%
+  left_join(select(subjs, subject, income_category,
+                   mother_education), by = "subject") %>%
+  left_join(select(visits, subject, visit, age_years), by = c("subject", "visit")) %>%
+  left_join(spread(measures, measure, value), 
+            by = c("subject", "visit", "age_years", "person")) %>%
+  left_join(mlu, by = c("subject", "visit", "person")) %>%
+  left_join(subjs, by = c("subject", "income_category", "mother_education")) %>%
+  gather(measure, value, mtld, tokens, types, vocd, mattr, ttr, cdi_ws, ppvt,
+         sent_comp, syntax, wppsi_block, mlu) %>%
+  filter(!is.na(value)) %>%
+   mutate(subject = salt(subject, .seed = 400)) %>%
+   mutate(subject = as.numeric(as.factor(subject))) %>%
+   arrange(subject, visit)
+
+write_feather(ldp_all, here("data/ldp_all_anonymized.feather"))
+
+```
 
 * Get PPVT&CDI data
 ```{r, echo=F, eval=F,message=F, warning=F}
@@ -218,28 +323,10 @@ ldp_cdi <- ldp_cdi %>%
         select(subject, session, k_cdi, sentence)
 ```  
 
-* Get MLU data
-```{r}
-kid_mlu <- measures %>%
-        select(subject, session, speaker, word_types, mlu)%>%
-        filter(speaker == "C")%>%
-        group_by(subject, session)%>%
-        select(-speaker)%>%
-        rename(k_mlu = mlu,
-               k_type = word_types)
 
-mom_mlu <- measures %>%
-        select(subject, session, speaker, word_types, mlu)%>%
-        filter(speaker == "P")%>%
-        group_by(subject, session)%>%
-        select(-speaker)%>%
-        rename(m_mlu = mlu,
-               m_type = word_types)
-        
-```
 
 * Merge data
-```{r}
+```{r, eval = F}
 # filter kids' data with at least 5 observeations
 measure_filter <- function(df) {
         nld <- aggregate(df$k_mtld, by = list(subject = df$subject),length)

@@ -7,3 +7,5 @@
 *.tex
 
 .DS_Store
+
+analysis/read_ldp.R

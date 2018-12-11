@@ -17,22 +17,23 @@ library(feather)
 library(koRpus)
 library(tidyverse)
 library(lme4)
-library(dplyr)
 library(sjPlot)
 library(corrplot)
 library(tidytext)
 library(childesr)
+library(here)
+library(broom)
+library(broom.mixed)
 ```
 
 
 ```{r, message=F, warning=F}
 # Load data
-ldp_all <- read_feather(here("data/ldp_all.feather"))%>%
-           filter(session != 80)
+ldp_all <- read_feather(here("data/ldp_all_anonymized.feather"))
 ```
 
 * Plot Growth Curve
-```{r}
+```{r, eval = F}
 # compare with CDI 
 ldp_all%>%
         filter(age >=14 & age <=30)%>%
@@ -104,33 +105,60 @@ ldp_all %>%
 # write a function geting growth curve parameters
 get_params <- function(df) {
         
-        model <- lmer(value ~ log(age) + ( log(age) | subject) ,
-                      data = df)
-        
+  log_model <- lmer(value ~ log(age_years) + ( log(age_years) | subject) ,
+                  data = df)
+  lin_model <- lmer(value ~ age_years + ( age_years | subject) ,
+                  data = df)
+  
 
-        subj_effects <- as_data_frame(ranef(model)$subject, rownames = "subject")
-        
-        effects <- subj_effects %>%
-                rename(intercept = `(Intercept)`,
-                       slope = `log(age)`) %>%
-                mutate(subject = as.numeric(subject)) %>%
-                right_join(df %>% select(subject, person, measure) %>% distinct(.))
+  p_lin <- anova(log_model, lin_model) %>%
+    tidy() %>%
+    pull(p.value) %>%
+    last()
+  
+  p_log <- anova(lin_model, log_model) %>%
+    tidy() %>%
+    pull(p.value) %>%
+    last()
+
+  
+  
+  log_subj_effects <- as_data_frame(ranef(log_model)$subject, 
+                                    rownames = "subject") %>%
+    mutate(type = "log", p = p_log) %>%
+    rename(intercept = `(Intercept)`,
+           slope = `log(age_years)`)
+  
+  lin_subj_effects <- as_data_frame(ranef(lin_model)$subject, 
+                                    rownames = "subject") %>%
+    mutate(type = "linear", p = p_lin) %>%
+    rename(intercept = `(Intercept)`,
+                 slope = `age_years`)
+  
+  bind_rows(log_subj_effects, lin_subj_effects) %>%
+          mutate(subject = as.numeric(subject)) %>%
+          right_join(df %>% select(subject, person, measure) %>% 
+                             distinct(.), by = "subject")
 }
 
+keep_subjs <- ldp_all %>%
+        filter(measure == "tokens") %>%
+        filter(value >= 100) %>%
+        group_by(subject, person) %>%
+        summarise(n = n()) %>%
+        filter(min(n) >= 5) %>%
+        distinct(subject) %>%
+        pull()
+
 ldp_intercept <- ldp_all %>%
-        rename(k_ppvt = ppvt,
-               k_sen = sentence)%>%
-        select(-c(income, race, sex, ethn, lesion, project, active, control, note)) %>%
-        group_by(subject)%>%
-        gather(measure, value, k_mtld:k_ppvt) %>%
-        separate(measure, c("person", "measure"), "_") %>%
+        filter(subject %in% keep_subjs) %>%
+        filter(measure != "wppsi_block") %>%
         split(paste0(.$person, "_", .$measure)) %>%
         map(get_params) %>%
-        bind_rows(.id = "id") %>%
-        select(-id)%>%
-        filter(complete.cases(.))
+        bind_rows() #%>%
+        #filter(complete.cases(.))
 
-write_feather(ldp_intercept, "/Users/Yawen/Documents/Github/CHILDES_Lexical-Diversity/data/ldp_intercept.feather")
+write_feather(ldp_intercept, here("data/ldp_effects_anonymized.feather"))
 ```
 
 * Variance 
@@ -187,4 +215,4 @@ ldp_intercept %>%
         spread(person, value) %>%
         group_by(measure, type) %>%
         summarise(cor = cor(k, m))
-```
+```     
