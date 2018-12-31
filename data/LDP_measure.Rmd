@@ -196,7 +196,7 @@ ldp_ppvt <- ldp_ppvt %>%
         mutate(vocab = as.numeric(`ppvt_percentile`)) %>%
         filter_func(.)%>%
         select(-c(ppvt))%>%
-        rename(ppvt = vocab)%>%
+        rename(k_ppvt = vocab)%>%
         select(subject, session, ppvt)
 
 
