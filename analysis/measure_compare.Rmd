@@ -22,6 +22,7 @@ library(sjPlot)
 library(corrplot)
 library(tidytext)
 library(childesr)
+library(here)
 ```
 
 
@@ -59,7 +60,7 @@ ldp_all%>%
         geom_smooth(aes(x=age,y=scale(k_mattr), color="mattr"), se=F)+
         geom_smooth(aes(x=age,y=scale(k_vocd), color="vocd"), se=F)+
         geom_smooth(aes(x=age,y=scale(k_mtld), color="mtld"), se=F)+
-        geom_smooth(aes(x=age, y=scale(ppvt), color="PPVT"),se=F)+
+        geom_smooth(aes(x=age, y=scale(k_ppvt), color="PPVT"),se=F)+
         geom_smooth(aes(x=age,y=scale(k_mlu), color="mlu"), se=F)+
         theme_classic()+
         labs(title = "Compare Lexical Diversity Indices with PPVT", 
@@ -118,9 +119,8 @@ get_params <- function(df) {
 }
 
 ldp_intercept <- ldp_all %>%
-        rename(k_ppvt = ppvt,
-               k_sen = sentence)%>%
-        select(-c(income, race, sex, ethn, lesion, project, active, control, note)) %>%
+        rename(k_sen = sentence)%>%
+        select(-c(income, race, sex, ethn, project, active, control, note, k_type, m_type)) %>%
         group_by(subject)%>%
         gather(measure, value, k_mtld:k_ppvt) %>%
         separate(measure, c("person", "measure"), "_") %>%
@@ -143,7 +143,7 @@ ldp_intercept %>%
         group_by(measure, type) %>%
         summarise(mean = mean(value, na.rm=TRUE),
                   sd = sd(value, na.rm=TRUE),
-                  coef_of_var =sd/mean) #other way to report var?
+                  coef_of_var =sd/mean) 
 
 ldp_intercept %>%
         filter(person == "m")%>%
