@@ -178,6 +178,13 @@ ldp_tidy %>%
   scale_x_continuous(limits = c(10, 70), breaks = seq(20,60,10))
 ```
 
+```{r}
+ldp_tidy %>%
+  filter(measure == "mtld", person == "child") %>%
+  group_by(age) %>%
+  summarise(mean = mean(value), sd = sd(value), cv = sd/mean)
+```
+
 ```{r change_models}
 age_model <- function(df) {
   lmer(value ~ log(age) + (1|subject), data = df) %>%
