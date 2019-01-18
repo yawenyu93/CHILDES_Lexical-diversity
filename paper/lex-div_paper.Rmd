@@ -109,9 +109,9 @@ The last lexical diversity measure used in this study is MTLD. Theoretically, MT
 
 These indices potentially divorce the sensitivity to text length from the measure of lexical diversity, but its acuracy is still influenced by the context of the talk [@montag2018]. Because the distribution of words in time is not random, instead, words systematically reoccur [@altmann2009]. For example, talking about the word cereal is very likely to co-occur with the talk about milk and there may be many reoccurences of these words in the morning compared to that in the evening. One possibility is that the burstiness of words is contigent on human activities, which are bursty in nature [@barabasi2005]. In addition to the activities they mutually engage in, linguistic alignment also contributes to the burstiness of words, as parents are found to tune the language they produce to developmentally-appropriate levels [@dan2016].  
 
-Our goal in this study was to explore how to appropriately measure language diversity and to investigate how parents' and children's languages are related. These questions are closely interwoven with each other. On the one hand, any measure of language diversity is always contigent on the context in which parents and children jointly participant in and reciprocally communicate. On the other, the parent-child correlation may vary with different language measures. We bootstrapped our way in answering these questions by looking at the aforementioned different measures in their parent-child correlation and how these measures relate to external measures. Our hypothesis was individual parents' and children's lexical diversity are related, in particular, the rate of language acquisition and their language skills or proficiency; these correlations measured by lexical diversity indices could be confirmed with external measures.   
+Our goal in this study was to explore how to appropriately measure language diversity and to investigate how parents' and children's languages are related. These questions are closely interwoven with each other. On the one hand, any measure of language diversity is always contigent on the context in which parents and children jointly participant in and reciprocally communicate. On the other, the parent-child correlation may vary with different language measures. We bootstrapped our way in answering these questions by looking at the aforementioned different measures in their parent-child correlation and how these measures relate to external measures. Our hypothesis was individual parents' and children's lexical diversity are related, in particular, the rate of language acquisition and their language skills or language proficiency. These correlations measured by lexical diversity indices could be confirmed with external measures. 
 
-
+We compare 
 
 We conclude that MTLD is the best measure, and that you get sensitivity from parents
 This is interesting because it suggests that we don't want a pure diversity measure, we want something in the secret sauce of MTLD.
@@ -124,7 +124,7 @@ This is interesting because it suggests that we don't want a pure diversity meas
 We report how we determined our sample size, all data exclusions (if any), all manipulations, and all measures in the study. <!-- 21-word solution (Simmons, Nelson & Simonsohn, 2012; retrieved from http://ssrn.com/abstract=2160588) -->
 
 ## Participants
-Participants in this study were parents and children drawn from the  Language Development Project (LDP) -- a longitudinal corpus of naturalistic parent-child interactions in a diverse sample of the Chicagoland community [@goldin-meadow2014]. We selected as our sample `r ldp_all %>% pull(subject) %>% n_distinct()` typically developing children. Children in the corpus were recorded in their homes for 90 minutes at a time every over the age of `r ldp_all %>% pull(age) %>% min()` months and `ldp_all %>% pull(age) %>% max() + 1` months. 
+Participants in this study were parents and children drawn from the Language Development Project (LDP) -- a longitudinal corpus of naturalistic parent-child interactions in a diverse sample of the Chicagoland community [@goldin-meadow2014]. We selected as our sample `r ldp_all %>% pull(subject) %>% n_distinct()` typically developing children. Children in the corpus were recorded in their homes for 90 minutes at a time every over the age of `r ldp_all %>% pull(age) %>% min()` months and `ldp_all %>% pull(age) %>% max() + 1` months. 
 
 From the full set of `r demos %>% pull(id) %>% n_distinct()` children, we excluded those who did not meet a set of criteria. First, we excluded `r demos %>% filter(is.na(lesion)) %>% pull(id) %>% n_distinct` atypically developing children. We then excluded `r demos %>% filter(is.na(lesion), completed) %>% group_by(id) %>% summarise(n= n()) %>% filter(n < 5) %>% pull(id) %>% n_distinct` children for whom we did not have at least 5 home visits in which they spoke at least 100 words [@mccarthy2007; @marvern2004] per visit in order to accurate estimate individual vocabulary growth. 
 
@@ -132,7 +132,7 @@ From the full set of `r demos %>% pull(id) %>% n_distinct()` children, we exclud
 The tokens that were transcribed and counted included all dictionary words, onomatopoeic sounds (e.g. "da-da"), and evaluative sounds (e.g. "uh-oh"). The final sample for the present study includes 63 primary caregiver-child dyads. LDP corpus contains a total of about 7 million tokens after removing a number of special transcription characters and other artifacts of the CHILDES coding system, as well as un-transcribable sections .
 
 ## External measures of vocabulary size and sentence complexity
-Children‘s vocabulary skills were evaluated with the use of MacArthur-Bates Communicative Development Inventories (CDIs) at 14 months and Peabody Picture Vocabulary Test (PPVT) <NOTE: DO WE KNOW WHICH VERSION> at 30, 42 and 54 months, respectively. These two measures have been widely used as standard instruments to assess vocabulary acquisition and to diagnose specific language impairment in children [@eickoff2010]. Given normative information of individual language development is difficult to derive from observational data because a spontaneous language sample is particularly sensitive to high-frequency words [@dale1996], the CDI and PPVT would serve as a valid comparison for growth in other indicators of vocabulary acquisition. In addition, MLU is computed 
+Children‘s vocabulary skills were evaluated with the use of MacArthur-Bates Communicative Development Inventories (CDIs) at 14 months and Peabody Picture Vocabulary Test (PPVT) <NOTE: DO WE KNOW WHICH VERSION> at 30, 42 and 54 months, respectively. These two measures have been widely used as standard instruments to assess vocabulary acquisition and to diagnose specific language impairment in children [@eickoff2010]. Given normative information of individual language development is difficult to derive from observational data because a spontaneous language sample is particularly sensitive to high-frequency words [@dale1996], the CDI and PPVT would serve as a valid comparison for growth to other indicators of vocabulary acquisition. In addition, Mean Length of Utterance (MLU) is computed for each session of every child. 
 
 ## Data analysis
 The present study concerns children’s vocabulary growth, especially growth of lexical diversity. To address this issue, we demonstrated analytically how growth curve parameters change in a deterministic manner under different lexical diversity measures and how variations in measures influence understanding of children's language outcome and the role of caregiver’s input on this outcome. 
@@ -143,7 +143,7 @@ Trajectories of children’s vocabulary development are described by two person-
 
 After constructing individual growth trajectories, we turn to three fundamental questions in order to address the primary concern of this paper. The first question is whether the overall trajectories of children and caregivers language richness change over time. The second question is whether there are significant individual differences among participants in LDP corpus. We used mixed-effects models to investigate variations in emphasized growth curve parameters with respect to different lexical diversity indices (e.g. MTLD, TTR, vocd-D and MATTR). Therefore, we tracked not only the overall characteristics of participants’ vocabulary development, but also the nature of individual differences in their pattern of language use.
 
-If there are significant variations in child’s growth parameters, the third question is what factors can predict child’s vocabulary growth across time. Here, we evaluate possible correlations among the components of child’s and caregiver’s vocabulary growth. Abundant research has demonstrated associations between maternal language and child’s early lexicon development [e.g., @hart1995, @hoff2003, @huttenlocher1991, @huttenlocher2010, @pan2005, @rowe2008]. However, it remains unknown whether these correlations vary with different indices used to measure vocabulary skills. We compared the parameters generated by lexical diversity indices under investigation to that of normative measures, including PPVT, CDI vocabulary and CDI sentence complexity measures.
+If there are significant variations in child’s growth parameters, the third question is what factors can predict child’s vocabulary growth across time. Here, we evaluate possible correlations among the components of child’s and caregiver’s vocabulary growth. Abundant research has demonstrated associations between maternal language and child’s early lexicon development [e.g., @hart1995, @hoff2003, @huttenlocher1991, @huttenlocher2010, @pan2005, @rowe2008]. However, it remains unknown whether these correlations vary with different indices used to measure vocabulary skills. We compared the parameters generated by lexical diversity indices of interest to normative measures, including PPVT, CDI vocabulary and CDI sentence complexity measures.
 
 # Results
 ## Growth curve of child's vocabulary
@@ -275,41 +275,41 @@ Children vary widely in their intercept and slope of vocabulary growth trajector
 ```{r Table 2, results ='asis'}
 # report correlation results in LDP
 # mother's slope ~ child's slope
-slope_cor <- ldp_intercept %>%
+# results in table
+#slope_cor <- ldp_intercept %>%
+#        gather(type, value, intercept, slope) %>%
+#       filter(complete.cases(.),
+#               measure %in% c("mattr", "mlu", "mtld", "ttr", "vocd")) %>%
+#        spread(person, value) %>%
+#        group_by(measure, type) %>%
+#        summarise(cor = cor(k, m))%>%
+#        rename(correlation = cor)
+
+#apa_table(
+#        slope_cor,
+#        caption = "Correlation of Lexical Diversity Growth Rate between Mother and Child ")
+
+# results in figure
+ldp_intercept %>%
         gather(type, value, intercept, slope) %>%
         filter(complete.cases(.),
                measure %in% c("mattr", "mlu", "mtld", "ttr", "vocd")) %>%
         spread(person, value) %>%
-        group_by(measure, type) %>%
-        summarise(cor = cor(k, m))%>%
-        rename(correlation = cor)
-
-#slope_cor [,-1] <- printnum(slope_cor[,-1])
-
-apa_table(
-        slope_cor,
-        caption = "Correlation of Lexical Diversity Growth Rate between Mother and Child "
-)
+        filter(type == "slope")%>%
+        group_by(measure)%>%
+        ggplot(., aes(x = k, y = m, color = measure))+
+        geom_jitter(alpha = .05) +
+        geom_smooth(method = 'lm', se = F, size = 1, formula = y~x)+
+        facet_wrap(~measure, scales = "free")+
+        labs(x="child's slope", y ="mother's slope")+
+        theme_classic()+
+        scale_color_ptol() +
+        scale_fill_ptol() 
 ```
 
-A growing body of research documents a relation between socioeconomic status and children's vocabulary development [@hart2995; @lawrence1996; @hoff-ginsberg1982; @hoff2003]. Our results also show household income is a significant predictor of children's lexicon diversity. Table 3 presents a significant correlation between household income and child's intercept generated by MTLD, CDI, PPVT and MLU, and its relation to child's slope measured by MTLD, MLU and PPVT. Specifically, children of high SES do not necessarily start with a more sophiscated language skill, but their vocabulary tend to develop faster than children from lower income family.
+A growing body of research documents a relation between socioeconomic status and children's vocabulary development [@hart2995; @lawrence1996; @hoff-ginsberg1982; @hoff2003]. Our results also show household income is a significant predictor of children's lexicon diversity. Table 3 presents a significant correlation between household income and child's slope generated by MTLD, PPVT and MLU. Surprisingly, there is no correlation between household income and mother's slope of any vocabulary measure, but its significant relation to how mother change the amount of child-directed speech across age is documented. In addition, income also relates to the amount of talk children produced across development, suggesting its role on child's language development is partially medited by the quantity of child-directed speech.
 
 ```{r Table 3, results='asis'}
-#income~child's intercept
-ses_intercept <- ldp_tidy %>%
-        select(subject, income) %>%
-        left_join(ldp_intercept) %>%
-        filter(person == "k") %>%
-        gather(type, value, intercept) %>%
-        group_by(subject)%>%
-        mutate(income = floor(mean(income, na.rm = T)))%>%
-        unique() %>%
-        select(-slope) %>%
-        spread(type, value) %>%
-        group_by(measure) %>%
-        summarise(cor = cor(intercept, income))%>%
-        rename(., intercept = cor)
-
 #income~child's slope
 ses_slope <- ldp_tidy %>%
         select(subject, income) %>%
@@ -325,16 +325,10 @@ ses_slope <- ldp_tidy %>%
         summarise(cor = cor(slope, income))%>%
         rename(., slope = cor)
 
-#merge two correlation tables
-ses_child <- ses_intercept %>%
-        left_join(ses_slope)
-
-
-#ses_child [,-1] <- printnum(ses_child[,-1])
 
 apa_table(
-        ses_child,
-        caption = "Correlation between Child's Lexical Diversity and Family Income"
+        ses_slope,
+        caption = "Correlation between Family Income and Child's Lexical Diversity Growth Rate"
 )
         
 ```
@@ -400,6 +394,8 @@ all_ld %>%
 
 # Discussion
 Previous research has shown large individual difference in children's language skills and the rate of their language growth [@huttenlocher1991; @fenson1994; @hart1995] relating to quantity and quality of language input [@hoff2003; @huttenlocher1991], that vary in SES [@hess1965; @Heath1983; @hoff-ginsberg1982; @hart1995; @rowe2008]. This study also documented the large variation in children's vocabulary diversity and its relation with maternal language and SES (i.e. family income). However, until our study, little evidence has been presented regarding how this variation and relation differ with respect to various measures. Different language measures have generated different results relating to the variation in individual vocabulary diversity and the rate of their lexcial diversity growth as well as their relation to maternal language. 
+
+The results regarding the use of vocd-D on capturing child's language growth across development contradict to the findings reported in [@duran]. One explanation is the difference in the way the texts of child's utterance are cleaned. Duran et al (2004) was not able to implement the vocd-D measure on the most representative sample of child's speech as limited by the exsisting techniques of text mining. We, now, are able to lower the case of all words, remove all the untelligible utterances and special identifies that may be mistakenly counted as novel word type by the programme, so that accurate the measurement results.
 
 The findings from our study has made it clear that the heterogeneity of child's language skill is contingent on how it is measured, in addition to the environmental factors discussed above. MTLD is the only lexical diversity indice that has detected the positive correlation between children's language outcome and parental language input, that are consistent with the results yielded by external normative measures (i.e. PPVT and CDI) and exisiting literature.  
 
