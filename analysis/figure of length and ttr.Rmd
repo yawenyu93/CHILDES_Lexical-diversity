@@ -1,4 +1,4 @@
----
+ ---
 title: "Figure of ttr and text length"
 author: "Yawen Yu"
 date: "3/29/2018"

@@ -8,4 +8,4 @@
 
 .DS_Store
 
-analysis/read_ldp.R
+data/read_ldp.R
