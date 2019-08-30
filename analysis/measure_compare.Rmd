@@ -22,11 +22,8 @@ library(corrplot)
 library(tidytext)
 library(childesr)
 library(here)
-<<<<<<< HEAD
-=======
 library(broom)
 library(broom.mixed)
->>>>>>> 18ccf96ed86a17966b41bc7b6f9eeca4a56861b2
 ```
 
 
@@ -154,16 +151,13 @@ keep_subjs <- ldp_all %>%
         pull()
 
 ldp_intercept <- ldp_all %>%
-<<<<<<< HEAD
         rename(k_sen = sentence)%>%
         select(-c(income, race, sex, ethn, project, active, control, note, k_type, m_type)) %>%
         group_by(subject)%>%
         gather(measure, value, k_mtld:k_ppvt) %>%
         separate(measure, c("person", "measure"), "_") %>%
-=======
         filter(subject %in% keep_subjs) %>%
         filter(measure != "wppsi_block") %>%
->>>>>>> 18ccf96ed86a17966b41bc7b6f9eeca4a56861b2
         split(paste0(.$person, "_", .$measure)) %>%
         map(get_params) %>%
         bind_rows() #%>%
@@ -174,7 +168,7 @@ write_feather(ldp_intercept, here("data/ldp_effects_anonymized.feather"))
 
 * Variance 
 ```{r, message=F, warning=F}
-ldp_intercept <- read_feather(here("data/ldp_intercept.feather"))
+ldp_intercept <- read_feather("~/Documents/GitHub/CHILDES_Lexical-diversity/data//ldp_intercept.feather")
 
 ldp_intercept %>%
         filter(person == "k")%>%
@@ -201,6 +195,14 @@ ldp_intercept %>%
         group_by(subject,person, measure)%>%
         spread(measure, intercept)%>%
         filter(person == "k")%>%
+        #rename("CDI" = "cdi",
+        #       "PPVT_sentence" = "sen",
+        #      "PPVT_vocabulary" = "ppvt",
+        #     "MATTR" = "mattr",
+        #       "vocd-D" = "vocd",
+        #     "MTLD" = "mtld",
+        #     "TTR" = "ttr")%>%
+        #select(-length,-mlu)%>%
         ungroup()%>%
         select(-person, -subject)%>%
         filter(complete.cases(.))%>%

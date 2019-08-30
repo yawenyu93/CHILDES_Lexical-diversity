@@ -23,7 +23,7 @@ author_note: |
   Please address corresponsdence
 
 abstract: |
-  Large variability in quantity of linguistic input to children, but also variability in quality. In some cases this quality appears to vary across groups, in others not. What is the right meausure of quality, and how is it related to language acquisition? In addition, how does the structure of input change over development. We look at a large, diverse, longitudinal corpus to answer these questions. 
+  Previous research has demonstrated a relationship between the quantity of language input and children’s rate of language development: Children who hear more words learn faster. This work takes on two mutually-constraining questions: (1) How should we define quality, and (2) what is the relationship between input quality and language development? We analyzed a longitudinal corpus interactions between 63 children and their parents using four measures of lexical diversity: Type Token Ratio (TTR), Moving Average TTR, and two more recent measures--vocd-D and MTLD. We found that only MTLD gave a prima-facie correct characterization of children’s development, and parents’ MTLD was correlated with children’s over development. Results of simulations show that MTLD is distinct from the other measures in it’s sensitivity to both lexical diversity and word order, suggesting that “quality” should be defined not just by diversity of words, but also by the variability of sentence structures in which they occur. 
   
   
 keywords          : "cognitive development; language acquisition; lexical diversity"
@@ -78,55 +78,47 @@ set.seed(42)
 
 ```{r read_data}
 # load LDP data
-ldp_all <- read_feather(here("data/ldp_all.feather"))%>%
-        select(-m_type,-k_type)
+ldp_all <- read_feather(here("data/ldp_all_anonymized.feather"))%>%
+  filter(!measure=="wppsi_block")
+
+ldp_effects <- read_feather(here("data/ldp_effects_anonymized.feather"))%>%
+  filter(!measure=="wppsi_block")
+
+demos <- read_csv(here("data/demos.csv"))
 ```
 
 Every typically developing child acquires language. Children learn language no matter what country they are born in or what language is spoken around them. They learn language no matter what cultural beliefs about language learning and transmission are held by the adults in their community [@lenneberg1967]. But this universal capacity to learn belies tremendous variability in both the rates and outcomes of learning. 
 
-Some of this variability is due to differences between languages. For instance, across languages, differences in both structure and cultural practices predict different trajectories of acqusition. For instance, children learning English many other languageacross languages, children tend to acquire nouns like "ball" before verbs like "throw" [@gentner1982]. However, this tendency appears weaker in children learning Mandarin [@tardif1996]. One potential explanation for this difference is that Mandarin speaking caregivers talk to their children more about relations, and less about objects [@tardif1999]. When these children enter school and begin leanring arithmetic, English learning children will have more trouble than Mandarin learning children in part because of the structure of the number words in their languages. The English-learning children will struggle with the teens, which are idiosyncratic and opaque relative to the words for the same numbers in Mandarin [@ho1998].
+Some of this variability is due to differences between languages. For instance, across languages, differences in both structure and cultural practices predict different trajectories of acqusition. For instance, children learning English could be very different from many other languages, children tend to acquire nouns like "ball" before verbs like "throw" [@gentner1982]. However, this tendency appears weaker in children learning Mandarin [@tardif1996]. One potential explanation for this difference is that Mandarin speaking caregivers talk to their children more about relations, and less about objects [@tardif1999]. When these children enter school and begin leanring arithmetic, English learning children will have more trouble than Mandarin learning children in part because of the structure of the number words in their languages. The English-learning children will struggle with the teens, which are idiosyncratic and opaque relative to the words for the same numbers in Mandarin [@ho1998].
 
-But, much of the variability occurss within language across children.
+But, much of the variability occurs within language across children. They vary considerably at early age in both comprehensive and productive language [@marchman2008]. The great varibility can be explained by many factors. One possibility is genetic differences across children. Some cognitive factors that contribute to linguistic skills are known to have genetic origins, such as memory, executive functions, and processing speed (Friedman et al., 2008). But even these estmiates suggest that large amounts of varibility are environmental. The impact of children's language exposure on their language output has been vastly studied and documented (for a review, see @hoff2006). This relation is often mediated by other environmental factors, such as socioecnomic status (SES) and parental knowledge of child development. For example, children from lower-SES background hear fewer and less complex utterances than their more advantaged peers [@hart1995; @rowe2008]. Even when SES is controlled, language input is still strongly related to the variability in child's language abilities [@rowe2012].  
 
+Despite considerable research linking language input and outcome, no concensus about the optimal way of measuring the quality of language input has emerged. The language environment concern both the quantity and quality. One approach, that has been used in many research topics in language development, is measuring the lexical diversity of language input. However, this concept is still disputable. In particular, varied similar terms have been used interchangeably with lexical diversity in many literatures, for example, lexical richness [@laufer1995], lexical density [@ure, @halliday1989], lexical variation [@linnarud; @hyltenstam] and vocabulary richness [@wimmer]. In this research, in line with the rating scales of aforementioned language development research, lexical diversity is losely defined as the range of different words used in a text, with a greater range indicating a higher diversity [@maccarthy2010].
 
+Measuring lexical diversity is as complex as its concept. Many lexical diversity indices have been adopted within language development discpline [@rowe2008; @huttenlocher2010] and across discplines such as linguistics [@giles], speech-language pathology [@thordardottir], behavioral research [@mccarthy2010], and journalism [@burgoon]. A major problem for measuring lexical diversity is the sensitivity to text length. For example, Type-token ratio (TTR)--unique vocabulary types divided by text length (V/N)--was once the most widely used and timehonored approach, yet inherently flawed, because it is highly affected by text length [@richards2009]. In particilar, type-token ratio decreases as the total number of words or tokens sampled increases, which is clearly depicted by Heaps' law (See [@montag2018; @heaps1978] for a discussion). 
 
-Language learning is highly similar across children, contexts, languages, etc. 
-But, language learning is also variable across children--different languages show some different orderings, some kids are slower than others, etc.
-How do we think about the sources of these differences? One possiblity is certainly genetic differences, but even these estimates suggest that large amounts of variability are environmental.
-So, how do we think about environmental differences?
-  Lots of evidence that more is good, but not all input is created the same 
+Many variations of TTR have been given to improve for this fault (e.g. Root TTR (T/√N), corrected TTR (T/ √2N), Log TTR (logT/logN)), but they have been widely tested and failed to adequately project the lexical diversity trend of a text [@mccarthy2007; @marvern2004]. Moving-Average of TTR (MATTR) [@mattr1993; @covington]) is presently the most satificatory transformation of the TTR. It is computed by first selecting a "window" length (e.g. 100 words), then calculating the TTR for the fixed window size, for example, for words 1-100, then for words 2-101, then 3-102, and so on to the end of the text. The mean of all the TTRs is computed as the final MATTR score. Instead of one single sample of words as measured by TTR, MATTR is based on consecutive word chuncks of a text [@covington].
 
+Other recently-developed alternatives to TTR and its tranformations include vocd-D and MTLD, that will be examined in this paper. The vocd-D has been included in the widely used Computerised Language Analysis (CLAN) suite of programs (available on the CHILDES website at http://childes.psy.cmu.edu) and steadily became the lexical diversity index of choice for many researchers [@rowe2008; @silverman2002; @mckee2000]. The vocd-D is calculated by taking a set of random samples without replacement, in an increasing sample sizes. It begins with 100 samples of 35 tokens drawn from the text and calculates a mean TTR for all the samples. The procedure is repeated for 100 samples of 36 tokens, 37 tokens and all the way to 100 samples of 50 tokens. All of mean TTRs are plotted in order to produce a value that is fit into a segment of the curve [@marvern2004; @mccarthy2007].
 
-The environmental differences concern quantity and quality of the language input, but the quality is much more complicated to measure. The quantity of input can be simply measured by counting the number of words or utterances spoken around children [@hart1995], whereas how to quantify its quality remains subject to debate. One approach for estimating the quality, that has been used in many research topics in language development, is lexical diversity. However, this concept is still disputable. In particular, varied similar terms have been used interchangeably with lexical diversity in many literatures, for example, lexical richness [@laufer1995], lexical density [@ure, @halliday1989], lexical variation [@linnarud; @hyltenstam] and vocabulary richness [@wimmer]. In this research, in line with the rating scales of aforementioned language development research, lexical diversity is losely defined as the range of different words used in a text, with a greater range indicating a higher diversity [@maccarthy2010].
-
-Measuring lexical diversity is as complex as its concept. Many lexical diversity indices have been adopted within language development discpline [@rowe2008; @huttenlocher2010] and across discplines such as linguistics [@giles], speech-language pathology [@thordardottir], behavioral research [@mccarthy2010], and journalism [@burgoon]. A major problem for measuring lexical diversity is the sensitivity to text length. For example, Type-token ratio (TTR)--unique vocabulary types divided by text length (V/N)--was once the most widely used and timehonored approach, yet inherently flawed, because it is highly affected by text length [@richards2009]. In particilar, type-token ratio decreases as the total number of words or tokens sampled increases, which is clearly depicted by Heaps' law (see [@montag2018; @heaps1978]). 
-
-Several suggestions for improving this fault have been given relating to transformations of the TTR were developed, e.g. Root TTR (T/√N) by Guiraud (1954, 1960), corrected TTR (T/ √2N) by Carroll (1964), Log TTR (logT/logN) by Herdan (1960), MATTR (moving-average of TTR) by Covington [@mattr1993; @covington]. Most variations have been widely tested and failed to project adequately lexical diversity trend of a text [@mccarthy2007; @marvern2004]. MATTR is presently the most satificatory transformation of the TTR and it has been implemented in the software WordSmith 4.0 (Oxford University Press) as the standardized type-token ratio. Initially, a window length (say 100 words) is selected. Then we compute the TTR for words 1-100, then for words 2-101, then 3-102, and so on to the end of the text. The mean of all the TTRs is computed as an indicator of lexical diversity of the entire text. Instead of one single sample of words as measured by TTR, MATTR is based on consecutive word chuncks of a text [@covington].
-
-Other alternatives to TTR and its tranformations include vocd-D and MTLD, both of which have draw increasing attention. The vocd-D has been included in the widely used Computerised Language Analysis (CLAN) suite of programs (available on the CHILDES website at http://childes.psy.cmu.edu) and steadily became the lexical diversity index of choice for many researchers [@rowe2008; @silverman2002; @mckee2000]. The vocd-D is calculated by taking a set of random samples without replacement, in an increasing sample sizes. It begins with 100 samples of 35 tokens drawn from the text and calculates a mean TTR for all the samples. The procedure is repeated for samples of 36 tokens, 37 tokens and all the way to 100 samples of 50 tokens. All of mean TTRs are plotted in order to produce a value that is fit into a segment of the curve [@marvern2004; @mccarthy2007].
-
-The last lexical diversity measure used in this study is MTLD. Theoretically, MTLD estimates average number of consecutive tokens for which a certain TTR is maintained (e.g. 0.72 by default). For any given sample, each token is evaluated sequentially for its TTR. For example, "I"(TTR = 1) "had"(TTR = 1) "chicken"(TTR = 1) "and" (TTR = 1) "I" (TTR = 0.8) "also" (TTR = 0.83) "had" (TTR = 0.71) and so forth. When the default TTR score is reached (here, 0.72), the factor count increases by a value of 1 and the TTR evaluations are reset. This process is repeated until the last token of the sample is evaluated for its TTR. Then the total number of tokens is divided by the total factor count. Subsequently, the same process is repeated on the reversed language sample. The final MTLD value is the mean of forward and reversed MTLD scores.
+The last lexical diversity measure investigated in this study is MTLD. Theoretically, MTLD estimates an average number of consecutive tokens for which a certain TTR is maintained (e.g. 0.72 by default). For any given sample, each token is evaluated sequentially for its TTR. For example, "I"(TTR = 1) "had"(TTR = 1) "chicken"(TTR = 1) "and" (TTR = 1) "I" (TTR = 0.8) "also" (TTR = 0.83) "had" (TTR = 0.71) and so forth. When the default TTR score is reached (here, 0.72), the factor count increases by a value of 1 and the TTR evaluations are reset. This process is repeated until the last token of the sample is evaluated for its TTR. Then the total number of tokens is divided by the total factor count. Subsequently, the same process is repeated on the reversed language sample. The final MTLD value is the mean of forward and reversed MTLD scores.
 
 These indices potentially divorce the sensitivity to text length from the measure of lexical diversity, but its acuracy is still influenced by the context of the talk [@montag2018]. Because the distribution of words in time is not random, instead, words systematically reoccur [@altmann2009]. For example, talking about the word cereal is very likely to co-occur with the talk about milk and there may be many reoccurences of these words in the morning compared to that in the evening. One possibility is that the burstiness of words is contigent on human activities, which are bursty in nature [@barabasi2005]. In addition to the activities they mutually engage in, linguistic alignment also contributes to the burstiness of words, as parents are found to tune the language they produce to developmentally-appropriate levels [@dan2016].  
 
-Our goal in this study was to explore how to appropriately measure language diversity and to investigate how parents' and children's languages are related. These questions are closely interwoven with each other. On the one hand, any measure of language diversity is always contigent on the context in which parents and children jointly participant in and reciprocally communicate. On the other, the parent-child correlation may vary with different language measures. We bootstrapped our way in answering these questions by looking at the aforementioned different measures in their parent-child correlation and how these measures relate to external measures. Our hypothesis was individual parents' and children's lexical diversity are related, in particular, the rate of language acquisition and their language skills or language proficiency. These correlations measured by lexical diversity indices could be confirmed with external measures. 
+Our goal was to explore how to appropriately measure lexical diversity. We bootstrapped our way in answering this question by looking at the aforementioned different measures in parent-child correlation and how these measures relate to external measures. We conclude that MTLD is probably the optimal measure, because it appropriately captures the change in the lexical diversity of speeches across development and the correlation between parents and children's language proficiency, whereas other measures demonstrate sensitivity to some confounding factors such as text length and word frequency. 
 
-We compare 
+#These questions are closely interwoven with each other. On the one hand, any measure of language diversity is always contigent on the context in which parents and children jointly participant in and reciprocally communicate. On the other, the parent-child correlation may vary with different language measures. 
 
-We conclude that MTLD is the best measure, and that you get sensitivity from parents
-This is interesting because it suggests that we don't want a pure diversity measure, we want something in the secret sauce of MTLD.
-  What might that be?
-
-
+#Our hypothesis was individual parents' and children's lexical diversity are related, in particular, the rate of language acquisition and their language proficiency. 
 
 
 # Methods
 We report how we determined our sample size, all data exclusions (if any), all manipulations, and all measures in the study. <!-- 21-word solution (Simmons, Nelson & Simonsohn, 2012; retrieved from http://ssrn.com/abstract=2160588) -->
 
 ## Participants
-Participants in this study were parents and children drawn from the Language Development Project (LDP) -- a longitudinal corpus of naturalistic parent-child interactions in a diverse sample of the Chicagoland community [@goldin-meadow2014]. We selected as our sample `r ldp_all %>% pull(subject) %>% n_distinct()` typically developing children. Children in the corpus were recorded in their homes for 90 minutes at a time every over the age of `r ldp_all %>% pull(age) %>% min()` months and `ldp_all %>% pull(age) %>% max() + 1` months. 
+Participants in this study were parents and children drawn from the Language Development Project (LDP) -- a longitudinal corpus of naturalistic parent-child interactions in a diverse sample of the Chicagoland community [@goldin-meadow2014]. We selected as our sample `r ldp_all %>% pull(subject) %>% n_distinct()` typically developing children. Children in the corpus were recorded in their homes for 90 minutes at a time every 3 months over the age of `r ldp_all %>% pull(age_years) %>% min()` months and `ldp_all %>% pull(age_years) %>% max() + 1` months. 
 
-From the full set of `r demos %>% pull(id) %>% n_distinct()` children, we excluded those who did not meet a set of criteria. First, we excluded `r demos %>% filter(is.na(lesion)) %>% pull(id) %>% n_distinct` atypically developing children. We then excluded `r demos %>% filter(is.na(lesion), completed) %>% group_by(id) %>% summarise(n= n()) %>% filter(n < 5) %>% pull(id) %>% n_distinct` children for whom we did not have at least 5 home visits in which they spoke at least 100 words [@mccarthy2007; @marvern2004] per visit in order to accurate estimate individual vocabulary growth. 
+From the full set of `r demos %>% pull(id) %>% n_distinct()` children, we excluded those who did not meet a set of criteria. First, we excluded `r demos %>% filter(is.na(lesion)) %>% pull(id) %>% n_distinct` atypically developing children. We then excluded `r demos %>% filter(is.na(lesion), completed) %>% group_by(id) %>% summarise(n= n()) %>% filter(n < 5) %>% pull(id) %>% n_distinct` children for whom we did not have at least 5 home visits in which they spoke at least 100 words per visit [@mccarthy2007; @marvern2004] in order to accurate estimate individual vocabulary growth. 
 
 ## Linguistic data
 The tokens that were transcribed and counted included all dictionary words, onomatopoeic sounds (e.g. "da-da"), and evaluative sounds (e.g. "uh-oh"). The final sample for the present study includes 63 primary caregiver-child dyads. LDP corpus contains a total of about 7 million tokens after removing a number of special transcription characters and other artifacts of the CHILDES coding system, as well as un-transcribable sections .
@@ -141,49 +133,29 @@ It is difficult to establish the role of input, because of two nagging third var
 
 Trajectories of children’s vocabulary development are described by two person-specific parameters: intercept and slope. Mixed-effects models allow us to consider all factors that potentially contribute to the growth of children’s vocabulary. These factors comprise not only standard fixed-effects factors, more specifically, average expected lexical diversity value across children and across sessions, but also covariates bound to the subjects. Another advantage of mixed-effects model is that local dependencies between the successive measures, specifically, vocabulary skills in preceding sessions, can be brought into the model. Lastly, it is particularly useful for handling situations in which measures for some individuals are missing at some time point. Overall, mixed-effects models allow for the subject and age specific adjustments to intercept and slope, and thus, enhanced precision in prediction and estimation. Given measured lexical diversity changes as a function of log-transformed age, slope in the present study is characterized as linear growth in a form of log age, and intercept is predicted based on the mixed-effects model. 
 
-After constructing individual growth trajectories, we turn to three fundamental questions in order to address the primary concern of this paper. The first question is whether the overall trajectories of children and caregivers language richness change over time. The second question is whether there are significant individual differences among participants in LDP corpus. We used mixed-effects models to investigate variations in emphasized growth curve parameters with respect to different lexical diversity indices (e.g. MTLD, TTR, vocd-D and MATTR). Therefore, we tracked not only the overall characteristics of participants’ vocabulary development, but also the nature of individual differences in their pattern of language use.
+After constructing individual growth trajectories, we turn to three fundamental questions in order to address the primary concern of this paper. The first question is whether the overall trajectories of children and caregivers vocabulary richness change over time, and how the trajectories differ with respect to different measures.
 
-If there are significant variations in child’s growth parameters, the third question is what factors can predict child’s vocabulary growth across time. Here, we evaluate possible correlations among the components of child’s and caregiver’s vocabulary growth. Abundant research has demonstrated associations between maternal language and child’s early lexicon development [e.g., @hart1995, @hoff2003, @huttenlocher1991, @huttenlocher2010, @pan2005, @rowe2008]. However, it remains unknown whether these correlations vary with different indices used to measure vocabulary skills. We compared the parameters generated by lexical diversity indices of interest to normative measures, including PPVT, CDI vocabulary and CDI sentence complexity measures.
+The second question is whether these measures are consitent with external measures such as CDI, PPVT, MLU, syntax measure (?), word types and number of tokens. We used mixed-effects models to investigate the relationships among emphasized growth curve parameters of different language measures. 
+
+The third question is which measure may best characterize the relation between child’s and caregiver’s language. Abundant research has demonstrated associations between maternal language and child’s early lexicon development [e.g., @hart1995, @hoff2003, @huttenlocher1991, @huttenlocher2010, @pan2005, @rowe2008]. However, it remains unknown whether these correlations vary with different indices used to measure vocabulary skills. We compared the parameters generated by lexical diversity indices of interest to normative measures, including PPVT, CDI vocabulary and CDI sentence complexity measures.
 
 # Results
 ## Growth curve of child's vocabulary
 The first goal of the study is to examine whether lexical diversity measures of children change over time. We plot growth trajectories of child's vocabulary skills measured by different methods at each session during 2;2 and 4;10. All measures are scaled based on their standard deviation and mean, thus, could be presented in one figure. Figure 1 presents accelerating curves of children's vocabulary growth in LDP corpus generated by MTLD, MATTR and vocd-D, that are characterized by a log-linear shape. We also plot the curves of PPVT, MLU, CDI vocabulary and sentence complexity as external norms. CDI assessments are conducted at child's early age, specifically, 18, 22, 26 and 30 months, while PPTV are conducted at 30, 41 and 53 months. They combine to represent a growth trajectory from 18 to 53 months, that lies within a specific peiord of time (i.e.14 and 58 months) intended for investigation. All measures, except for TTR curve, increase from 14 to 58 months and growth gradually diminishes over time for vocd-D. 
-
-```{r measure_figure, fig.width = 4, fig.height = 6}
-ldp_tidy <- ldp_all%>%
-  gather(measure, value, k_mtld : k_ppvt) %>%
-  mutate(person = if_else(str_detect(measure, "m_"), "parent", "child")) %>%
-  mutate(measure =  gsub("k_", "", measure)) %>%
-  mutate(measure =  gsub("m_", "", measure)) %>%
-  mutate(type = if_else(measure %in% c("cdi", "sentence", "ppvt"),
-                        "external", "corpus")) %>%
-  group_by(measure) %>%
-  mutate(value = scale(value))
-
-ldp_tidy %>%
+```{r growth curve, fig.width = 4, fig.height = 6}
+ldp_all %>%
   ungroup() %>%
-  mutate(measure = factor(measure, levels = c("cdi", "sentence", "ppvt", 
-                                              "length", "mlu", "mattr", "vocd",
-                                              "mtld", "ttr"))) %>%
-  ggplot(aes(x = age, y = value, color = person, fill = person, label = person)) +
-  facet_wrap(~ measure) +
+  mutate(measure = factor(measure, levels = c("mtld", "tokens","types", "ppvt", "vocd","syntax","cdi_ws", "sent_comp","mlu", "mattr","ttr")))%>%
+  ggplot(aes(x = age_years, y = value, color = person, fill = person, label = person)) +
   geom_jitter(alpha = .05) +
+  facet_wrap(~ measure, scales = "free") +
   geom_smooth(method = "loess", se = F, size = 1) +
-  labs(x = "age (months)",  y = "z-score") +
-  theme_classic() + 
+  labs(x = "age (months)",  y = "z-score")+  
   scale_color_ptol() +
   scale_fill_ptol() + 
-  geom_dl(method = list(dl.trans(x=x +.2), "last.qp", cex=.6)) +
-  theme(legend.position = "none") + 
-  scale_x_continuous(limits = c(10, 70), breaks = seq(20,60,10))
+  theme_classic()
 ```
 
-```{r}
-ldp_tidy %>%
-  filter(measure == "mtld", person == "child") %>%
-  group_by(age) %>%
-  summarise(mean = mean(value), sd = sd(value), cv = sd/mean)
-```
 
 ```{r change_models}
 age_model <- function(df) {
@@ -239,112 +211,88 @@ compare_age_models <- ldp_tidy %>%
 
 We confirmed these visual intuitions in a set of mixed-effects models, predicting the z-scored value for each measure as a function of the log of age. A random intercept was included for each participant as random slopes did not converge (`value ~ log(age) + (1|subj)`). All of the measures of children showed significant increases with age (minimum slope = `r min_kid$estimate`, p `r printp(min_kid$p.value)` except for Type Token Ratio, which showed significantly decreasing slope over development (slope = `r kid_ttr$estimate`, p `r printp(kid_ttr$p.value)`). Parents also showed change over development, with a positive slope for all measures (minimum slope = `r min_parent$estimate`, p `r printp(min_parent$p.value)` except for length of their talk was not significantly related to age (slope = `r parent_length$estimate`, p = `r printp(parent_length$p.value)`). In addition, we refit each model with a linear effect of age, but the logorothmic models were better accounts for the data except for the change in CDI Sentences for children, and the change in length and type token ratio for parents (all ps <.001).
 
+## Correlation with external measures
+```{r table 1}
+measure_cor <- ldp_effects %>%
+        filter(person == "child")%>%
+        filter(type == "log")%>%
+        select(-intercept,-p, -person,-type)%>%
+        spread(measure, slope)%>%
+        select(-subject)%>%
+        filter(complete.cases(.))%>%
+        psycho::correlation()
 
+summary(measure_cor)
+```
+Table 1 presents relations of four child's lexical diversity measures to external measures, including CDI, PPVT, MLU, syntax measure (?), word types and number of tokens of child speech. There was a significantly positive relation of CDI vocabulary to MTLD (*r*=.55, *p*<.001), whereas negatively associated with MATTR (*r*=-.4, *p*<.05) and vocd-D (*r*=-.62, *p*<.001). Furthermore, PPVT sentence comprehesion (?) measure also significantly related to MTLD (*r*=.53, *p*<.001) and MATTR (*r*=-..43, *p*<.05). For syntax measure, only MTLD (*r*=.55, *p*<.001) associated with it. Lastly, we also tested the relations of word types and number of tokens to four lexical diversity measures. Word types at a particular session are also used to measure lexical diversity [@huttenlocher2010], while the number of tokens are often found to confound the lexical diversity results [@richards2009]. Results shown that vocd-D negatively related to word types (*r*=.-.47, *p*<.01) and number of tokens (*r*=-.44, *p*<.05), whereas MTLD only related to word types (*r*=.51, *p*<.01). There were no relations between TTR and any of the aforementioned external measures.
 
-We further fit regression models to evaluate relation between child's intercept and age. As expected, child's initial status of vocabulary skills are significantly related to age. For example, in LDP corpus, age is a strong predictor of the intercepts deriving from MTLD (r=0.85, p<0.001), MATTR (r=0.82, p<0.001), vocd-D (r=0.71, p<0.001), that is similar to the normative measures: CDI (r=0.93, p<0.001) and PPVT (r=0.95, p<0.001). By comparison, age explains less variance in TTR measures (r=0.46, p<0.01). TTR curve is the most volatile and hardly represent the growth pattern of child's lexicon over time. So far, the results concur with findings in many previous research [@heaps1978, @herdan1960; @kucera1967, @montag2018) that TTR, also known as type-token ratio, demonstrates diminishing returns of new types. Therefore, when it is used to compare any two texts, the longer one generally appears to be less diverse.
+## Correlation with maternal language 
+We next sought to examine the correlation of child's language with maternal language to determine whether the correlations vary with measures. To address these questions, we investigated the relation between lexical diversity of children and mothers in two different ways. 
 
-## Variation in vocabulary development 
-The second goal is to document individual differences in child's vocabulary development and caregiver's child-directed speech. We first fit all vocabulary measures, assessed by MTLD, MATTR, vocd-D, TTR, PPVT and CDI vocabulary and MLU, with log-transformed age as a sole predictor. We obtain paramters of growth trajectories, specifically, the intercept describing initial aptitude for lexical diversity and the slope showing the rate of vocabulary development over time. 
+The first way is to compare the model including z-scored values for maternal language measured by each lexical diversity indice to the initial baseline models with log of age as a sole predictor. This model outperformed the baseline model ($X^{2}$(1)=11.73, *p* < .001). In this model, the maternal lexical diversity was significant and negative predictor of children's lexical diversity (*B* = -.05, *SE* = .02, *t* = -3.44, *p* = .001). Next, we added measure as an additional fixed effect, which significantly improved the overall fit ($X^{2}$(5) = 712.14, *p* < .000). Intriguingly, controlling for measure significantly changed the effect of maternal language on child language, as shown in Table 2. Specifically, introducing measure to the model reversed the direction of the effect of maternal language, and increased the magnititude of the effect (*B* = .11, *SE* = .02, *t* = 7.25, *p* < .001). Overall, the relationship between languages of children and mother is significantly affected by which measure is used. 
 
-Descriptive statistics for these parameters are presented in Table I. Coefficient of variation is computed by dividing mean of each measure by their standard deviation. Results display that children varied widely in the initial vocabulary skills and the results generated by all measures are consistent, however, the variance differs with respect to various measures. For example, the variance in intercept and slope generated by TTR are as 10 to 80 times as the variance generated by other measures. The third goal of the study is to evaluate predictors of growth parameters of child's lexical development.
+```{r child mom cor, results='hide'}
+ldp_merge <- ldp_tidy %>%
+        spread(person, value) %>%
+        ungroup()%>%
+        filter(complete.cases(.))
 
-```{r Table1, results = "asis"}
-# load parameters data
+simple_age <- lmer(child ~ log(age) + (1|subject), data = ldp_merge) 
+simple_mom <- lmer(child ~ log(age) + parent + (1|subject), data = ldp_merge) 
+anova(simple_age, simple_mom)
+
+simple_measure <- lmer(child ~ log(age) + parent + measure + (1|subject), data = ldp_merge)
+anova(simple_mom, simple_measure)
+```
+Our second way to examine relationships between lexical diversity of children and mother was to investigate the age-related slope for children and mother. By using the initial baseline model, the paramters of growth trajectories were obtained, that were person-specific and measure-specific. We focused on the slope showing the rate of vocabulary development over time. 
+
+A similar approach was adopted. Again, we started with a model with child's slope as dependent variable and random effects for each child were included. Next, we added mothers' slope as fixed effects and compared it to the initial model. As expected, this model outperformed the baseline model ($X^{2}$(1) = 16.74, *p* < .000), suggesting the amount of change in chilren's lexical diversity was related to the amount of change in mothers' language. This relation remained significant when controlling for measure (*B* = .11, *SE* = .31, *t* = 4.10, *p* < .001). However, the pattern of the correlation was affected by measure, with significantly positive correlations for MTLD (*r* = .27) and moderately significant, negative relation for MATTR (*r* = -12). 
+```{r parameter cor, results='hide'}
 ldp_intercept <- read_feather(here("data/ldp_intercept.feather"))
 
-# report LDP variation
-ldp_var <- ldp_intercept %>%
-        filter(measure != "length")%>%
-        filter(person == "k")%>%
-        gather(type, value, intercept, slope) %>%
-        group_by(measure, type) %>%
-        summarise(mean = mean(value, na.rm=TRUE),
-                  sd = sd(value, na.rm=TRUE),
-                  CV = sd/mean)
+ldp_parameter <- ldp_intercept %>%
+        gather(parameter, value, intercept:slope)%>%
+        spread(person, value)%>%
+        rename(child = k,
+               parent = m)%>%
+        unique()%>%
+        filter(complete.cases(.))%>%
+        filter(parameter == "slope")
 
-#ldp_var[,-1] <- printnum(ldp_var[,-1])
+simple_lme <- lmer(child ~ 1 + (1|subject), data = ldp_parameter) 
+simple_mom <- lmer(child ~ parent + (1|subject), data = ldp_parameter) 
+anova(simple_lme, simple_mom)
 
-apa_table(ldp_var, 
-          caption = "Descriptive statistics for LDP child's intercept and growth rate (n=66)",
-          note = "CV reported here is the coeficient of variation that shows the extent of variability in relation to the mean.")
+simple_measure <- lmer(child ~ parent + measure + (1|subject), data = ldp_parameter)
+anova(simple_mom, simple_measure)
 ```
 
-## Correlation with maternal language and family income
-Children vary widely in their intercept and slope of vocabulary growth trajectory. We first evaluate predictors of child's growth parameters generated by MTLD, MATTR, vocd-D and TTR. A growing body of previous work demonstrates significant influence of caregiver's speech on child's language development [e.g., @huttenlocher1991; @hurtado2008; @rowe2008; @rowe2015; @huttenlocher2010]. In LDP corpus, caregivers' intercept does not relate to their child's intercept, as shown in Table 2. Because the initial language aptitude is represented by one of growth parameters-intercept-we seprate confounding contextual relation from caregiver-child conversation sample. Yet, caregiver's slope relates to child's growth rate of vocabulary diversity. Table 2 demonstrates a positive relation between caregiver's slope and child's slope that are deriving from MTLD and MLU, while MATTR generates a moderately negative relation between them. This finding aligns with previous work in which mothers fine-tune language usage, specifically vocabulary choice, across development in connect to their children's level of understanding and language skills [@dan2016].
-
-```{r Table 2, results ='asis'}
-# report correlation results in LDP
-# mother's slope ~ child's slope
-# results in table
-#slope_cor <- ldp_intercept %>%
-#        gather(type, value, intercept, slope) %>%
-#       filter(complete.cases(.),
-#               measure %in% c("mattr", "mlu", "mtld", "ttr", "vocd")) %>%
-#        spread(person, value) %>%
-#        group_by(measure, type) %>%
-#        summarise(cor = cor(k, m))%>%
-#        rename(correlation = cor)
-
-#apa_table(
-#        slope_cor,
-#        caption = "Correlation of Lexical Diversity Growth Rate between Mother and Child ")
-
-# results in figure
-ldp_intercept %>%
+```{r maternal cor, results ='hide'}
+slope_cor <- ldp_intercept %>%
         gather(type, value, intercept, slope) %>%
-        filter(complete.cases(.),
+       filter(complete.cases(.),
                measure %in% c("mattr", "mlu", "mtld", "ttr", "vocd")) %>%
         spread(person, value) %>%
-        filter(type == "slope")%>%
-        group_by(measure)%>%
-        ggplot(., aes(x = k, y = m, color = measure))+
-        geom_jitter(alpha = .05) +
-        geom_smooth(method = 'lm', se = F, size = 1, formula = y~x)+
-        facet_wrap(~measure, scales = "free")+
-        labs(x="child's slope", y ="mother's slope")+
-        theme_classic()+
-        scale_color_ptol() +
-        scale_fill_ptol() 
-```
-
-A growing body of research documents a relation between socioeconomic status and children's vocabulary development [@hart2995; @lawrence1996; @hoff-ginsberg1982; @hoff2003]. Our results also show household income is a significant predictor of children's lexicon diversity. Table 3 presents a significant correlation between household income and child's slope generated by MTLD, PPVT and MLU. Surprisingly, there is no correlation between household income and mother's slope of any vocabulary measure, but its significant relation to how mother change the amount of child-directed speech across age is documented. In addition, income also relates to the amount of talk children produced across development, suggesting its role on child's language development is partially medited by the quantity of child-directed speech.
-
-```{r Table 3, results='asis'}
-#income~child's slope
-ses_slope <- ldp_tidy %>%
-        select(subject, income) %>%
-        left_join(ldp_intercept) %>%
-        filter(person == "k") %>%
-        gather(type, value, slope) %>%
-        group_by(subject)%>%
-        mutate(income = floor(mean(income, na.rm = T)))%>%
-        unique()%>%
-        select(-intercept)%>%
-        spread(type, value) %>%
-        group_by(measure) %>%
-        summarise(cor = cor(slope, income))%>%
-        rename(., slope = cor)
-
+        group_by(measure, type) %>%
+        summarise(cor = cor(k, m))%>%
+        rename(correlation = cor)
 
 apa_table(
-        ses_slope,
-        caption = "Correlation between Family Income and Child's Lexical Diversity Growth Rate"
+        slope_cor,
+        caption = "Correlation between Maternal Language and Child's Language"
 )
-        
 ```
 
 ## The mechanism of MTLD
-The correlation analysis demonstrates that household income is a significant predictor of child's vocabulary skill, and to what extent caregivers change the way they talk across age significantly relates to the growth rate of child's vocabulary, as measured by MTLD and normative measures. So far, the results generated by MTLD are consistent with the previous findings, revealing a significant relation between caregiver's speech and child's language development. To explore what distinguishes MTLD from other lexical diversity techniques (i.e. vocd-D, TTR and MATTR), we examine its theoretical rationale and test how this mechanism works using simulation.
+So far, the results generated by MTLD are consistent with the external measures and reveal a significant relation between caregiver's speech and child's language development. To explore what distinguishes MTLD from other lexical diversity techniques (i.e. vocd-D, TTR and MATTR), we examined its theoretical rationale and tested how this mechanism works using simulation.
 
 ## Sequential analysis
-When looking into existing lexical diversity indices, nonsequential analysis is still a common approach. One reason of its being ubiquitous relates to the advantage of avoiding local clustering. However, it may lead to a distorted way of overall text (Malvern et al. 2004). MTLD is an exception. Theoretically, MTLD estimates average number of consecutive tokens for which a certain TTR is maintained (e.g. 0.72 by default). For any given sample, each token is evaluated sequentially for its TTR. For example, "I"(TTR = 1) "had"(TTR = 1) "chicken"(TTR = 1) "and" (TTR = 1) "I" (TTR = 0.8) "also" (TTR = 0.83) "had" (TTR = 0.71) and so forth. When the default TTR score is reached (here, 0.72), the factor count increases by a value of 1 and the TTR evaluations are reset. This process is repeated until the last token of the sample is evaluated for its TTR. Then the total number of tokens is divided by the total factor count. Subsequently, the same process is repeated on the reversed language sample. The final MTLD value is the mean of forward and reversed MTLD scores.
-
-The sequential analysis of MTLD distinguishes itself from other measures by maintaining the integrity of a text, because it evaluates words in order, rather than treats a text as a bag of words. Words, or other textual components, have to be bound together with a certain structure so that a reader or a listener can form a coherent mental representation [@van2983]. Therefore, the sequential analysis may provide information on vocabulary from various levels, lexical level and sematic level, that interact in an intricate way. The final set of analyses explore how MTLD works differently from other measures by assessing multiple simulated child's speech sampled from LDP corpus. 
+When looking into existing lexical diversity indices, nonsequential analysis is still a common approach. One reason of its being ubiquitous relates to the advantage of avoiding local clustering. However, it may lead to a distorted way of overall text [@marvern2004]. MTLD is an exception. The sequential analysis of MTLD distinguishes itself from other measures by maintaining the integrity of a text, because it evaluates words in order, rather than treats a text as a bag of words. Words, or other textual components, have to be bound together with a certain structure so that a reader or a listener can form a coherent mental representation [@van2983]. Therefore, the sequential analysis may provide information on vocabulary from various levels, lexical level and sematic level, that interact in an intricate way. The final set of analyses explore how MTLD works differently from other measures by assessing multiple simulated child's speech sampled from LDP corpus. 
 
 ## Simulated speech
-The sequential analysis differs from nonsequential analysis mainly in its measuring a text in order. Here, we sougt to assess the degree to which there is a significant change in the value of each lexical diversity index caused by the change of word order. We begin with a baseline sample of 3000 tokens from LDP corpus and then create another two simulated child speech samples generated by including 15 tokens in a repetitive order or in a random order. For the 15 tokens, we generate a list of all the unique word types produced by children in the entire corpus, and select the first 5 word types that occur in LDP most frequently, specifically, "I", "you", "the", "it" and "no". In the second sample, we add a total number of 15 tokens with each word type repeating 3 times in such a repetitive order as "i", "i", "i", "no", "no", "no", "you", "you", "you", "the", "the", "the", "it", "it", "it". The third sample is created by inserting the same 5 word types in a random order. We then repeat this sampling procedure 100 times and measure three versions of child speech by four lexical diversity techniques. 
+The sequential analysis differs from nonsequential analysis mainly in its measuring a text in order. Here, we sougt to assess the degree to which there is a significant change in the value of each lexical diversity index caused by the change of word order. We began with a baseline sample of 3000 tokens from LDP corpus and then created another two simulated child speech samples by including 15 tokens in a repetitive order or in a random order. For the 15 tokens, we generated a list of all the unique word-types produced by children in the entire corpus, and selected the first 5 word types that occurred in LDP most frequently, specifically, "I", "you", "the", "it" and "no". In the second sample, we added a total number of 15 tokens with each word type repeating 3 times in such a repetitive order as "i", "i", "i", "no", "no", "no", "you", "you", "you", "the", "the", "the", "it", "it", "it". The third sample was created by adding the same 5 word types in a random order. We then repeated this sampling procedure 100 times and measured three versions of child speech by four lexical diversity indices. 
 
-Results are shown in Figure 2. There is a consistent decrease in MTLD scores when comparing samples of different word orders, though only 0.5 percent of tokens are manipulated. Whereas MATTR shows no change in its value with any manipulation, vocd-D and TTR scores slightly decrease as 15 tokens are added into baseline sample, regardless of the word order. However, it remains unclear whether the decrease in MTLD scores is caused by the change of word orders, or adding frequent word types that actually yields greater lexical overlap. Similarly, it is also unknown if the change of vocd-D and TTR values are caused by less diversity in word types or confounded by change of text length.   
+Results are shown in Figure 2. There was a consistent decrease in MTLD scores when comparing samples of different word orders, though only 0.5 percent of tokens were manipulated. Whereas MATTR showed no change in its value with any manipulation, vocd-D and TTR scores slightly decreased as 15 tokens were added into the baseline sample, regardless of the word order. However, it remains unclear whether the decrease in MTLD scores is caused by the change of word orders, or adding frequent word types that actually yields greater lexical overlap. In addition, it is also unknown if the change of vocd-D and TTR values are caused by less diversity in word types or confounded by change of text length.   
 
 ```{r Figure2}
 # load data
@@ -358,15 +306,13 @@ all_ld %>%
   geom_boxplot(aes(x=group, y=value, color=group)) +
   facet_grid(~measure)+
   theme_classic()+
-  labs(title = "Compare All Measures with Simulated Speech",
-       subtitle = "baseline sample: 3000 tokens",
-       y = "Scaled lexical diversity")+
+  labs(y = "Scaled lexical diversity")+
   theme_apa()
 ```
 
-The second question emerging from this is whether word frequency influences lexical diversity score and whether the effect varies with respect to different measures. We also randomly sample 3000 tokens as a basline child speech and add 5 unique low-frequency word types in a repetitive order and in a random order, respectively. To be more specific, these word types are "treatment", "clog", "trustworthy", "thief" and "tofu"; each word type only occurs once in the entire LDP corpus. The second sample comprises of the baseline sample with these 5 unique word types repeating 3 times in order, and the third sample entails these 5 word types repeating 3 times in a random order. We perform the same sampling procedure described previously 100 times. 
+The second question emerging from this was whether word frequency influences lexical diversity score and whether the effect varied with respect to different measures. Similarly, we began with a random 3000-token sample as a basline child speech and added 5 unique low-frequency word-types in a repetitive order and in a random order, respectively. To be more specific, these word types were "treatment", "clog", "trustworthy", "thief" and "tofu"; each word type only occurred once in the entire LDP corpus. The second sample comprised of the baseline sample with these 5 unique word-types repeating 3 times in order, and the third sample entailed these 5 word types repeating 3 times in a random order. We performed the same sampling procedure 100 times and generated 3000 speech samples. 
 
-Figure 3 demonstrates that MTLD scores significantly drop when adding tokens in a repetitive order, but there is no significant change with various word frequencies. Whereas MATTR and TTR are influenced neither by word type nor by word order, vocd-D scores slightly increase as sparsely occuring words are added but decrease when adding more common words. Comparisons among four versions of manipulated speech of the same text length (i.e. 3015 tokens) suggest that the sensitivity of vocd-D to word types and the sentivity of MTLD to word orders are not confounded by text length.
+Figure 3 demonstrates that MTLD scores significantly dropped when adding tokens in a repetitive order, but there was no significant change with various word frequencies. Whereas MATTR and TTR were influenced neither by word type nor by word order, vocd-D scores slightly increased as sparsely occuring words were added and decreased when adding more common words. Comparisons among four versions of manipulated speech of the same text length (i.e. 3015 tokens) suggested that the sensitivity of vocd-D to word types and the sentivity of MTLD to word orders were not confounded by text length.
 
 ```{r Figure3}
 # plot 
@@ -375,9 +321,7 @@ all_ld %>%
   ggplot()+
   geom_boxplot(aes(x=group, y=value, color=group)) +
   facet_grid(measure~text)+
-  theme_classic()+
-  labs(title = "Compare All Measures with Simulated Speech",
-       y = "Scaled lexical diversity")+
+  labs(y = "Scaled lexical diversity")+
   theme_apa()
 
 all_ld %>%
@@ -391,20 +335,22 @@ all_ld %>%
        y = "Scaled lexical diversity")
 ```
 
+# Discussion 
+Previous research has shown large individual difference in children's language skills and the rate of their language growth [@huttenlocher1991; @fenson1994; @hart1995] relating to quantity and quality of language input [@hoff2003; @huttenlocher1991]. However, until our study, little evidence has been presented regarding how this relation differ with respect to various measures. Different language measures have generated different results relating to the variation in individual vocabulary diversity and the rate of their lexcial diversity growth as well as their relation to maternal language. 
 
-# Discussion
-Previous research has shown large individual difference in children's language skills and the rate of their language growth [@huttenlocher1991; @fenson1994; @hart1995] relating to quantity and quality of language input [@hoff2003; @huttenlocher1991], that vary in SES [@hess1965; @Heath1983; @hoff-ginsberg1982; @hart1995; @rowe2008]. This study also documented the large variation in children's vocabulary diversity and its relation with maternal language and SES (i.e. family income). However, until our study, little evidence has been presented regarding how this variation and relation differ with respect to various measures. Different language measures have generated different results relating to the variation in individual vocabulary diversity and the rate of their lexcial diversity growth as well as their relation to maternal language. 
+The findings from our study has made it clear that the heterogeneity of child's language skill is contingent on how it is measured, in addition to the environmental factors (i.e. language input) discussed above. MTLD is the only lexical diversity indice that has detected the positive correlation between children's language outcome and parental language input, that are consistent with the findings of exisiting literature. It is also the only measure that generates parallel results with external, normative measures (i.e. PPVT, CDI, syntax, mean length of utterances and number of word types).  
 
-The results regarding the use of vocd-D on capturing child's language growth across development contradict to the findings reported in [@duran]. One explanation is the difference in the way the texts of child's utterance are cleaned. Duran et al (2004) was not able to implement the vocd-D measure on the most representative sample of child's speech as limited by the exsisting techniques of text mining. We, now, are able to lower the case of all words, remove all the untelligible utterances and special identifies that may be mistakenly counted as novel word type by the programme, so that accurate the measurement results.
+The results regarding the use of vocd-D on capturing child's language growth across development contradict to the findings reported in [@duran]. One possible explanation is that the texts of child's utterance are cleaned in different ways. In Duran et al (2004), the samples of child's speech might not be representative of their language proficiency, because of technogical limits. Instead, we are indebted to more advanced techniques of text mining to clean the textual data and accurate the measure results. For example, we able to lower the case of words, remove the untelligible utterances and special identifies that may be mistakenly counted as novel word type by the programme.
 
-The findings from our study has made it clear that the heterogeneity of child's language skill is contingent on how it is measured, in addition to the environmental factors discussed above. MTLD is the only lexical diversity indice that has detected the positive correlation between children's language outcome and parental language input, that are consistent with the results yielded by external normative measures (i.e. PPVT and CDI) and exisiting literature.  
+As is confirmed by the assessment of simulated speech/text, MTLD and vocd-D capture different information of lexical diversity. Previous research has used vocd-D mainly to measure written text or second language oral speech, in which vocabulary size, to a large extent, represent language proficiency of the language users. But the speech production at the early stage of human species primarily functions as the medium for communicating our needs. For this purpose, children not only accumulate different vocabularies but also learn to combine words in a meaningful way. That is, the complexity of spoken language is grammatical and that of written language is lexical [@halliday1989]. 
 
-Why does MTLD capture the lexical diversity change across development but vocd-D fail? One possibility is that MTLD and vocd-D captures different information of lexical diversity, confirmed by the assessment of simulated speech/text. Previous research has used vocd-D mainly to measure written text or second language oral speech, in which vocabulary size, to a large extent, represent language proficiency of the writer or speaker. But the speech production at the early stage of human species primarily functions as the medium for communicating our needs. For this purpose, children not only accumulate different vocabularies but also learn to combine words in a meaningful way. That is, the complexity of spoken language is grammatical and that of written language is lexical [@halliday1989]. 
+[@mccarthy2010] have demonstrated that lexical diversity indices cannot be assumed to evaluate the same latent trait. This study takes a step futher determining the specificity of information each measure captures. In particular, vocd-D shows high sensitivity to word types, thus offering an incremental advantage of assessing child's vocabulary size, whereas MTLD distinguishes word orders, thus offering synatic and grammatical information of child's language usage. The unique information apprehended by the two measures together delineate the construct of lexical diversity, though far from comprehensive. 
 
-As MacCarthy & Jarvis (2010) demonstrates that lexical diversity indices cannot be assumed to evaluate the same latent trait. This study takes a step futher determining the specificity of information each measure captures. In particular, vocd-D shows high sensitivity to word types, thus offering an incremental advantage of assessing child's vocabulary size, whereas MTLD distinguishes word orders, thus offering synatic and grammatical information of child's language usage. 
+This study explores the specific aspect of child's language development between 14 and 58 months. The time range examined here grasps the linguistic transitions from producing first word to succesive single-word utterances then to meaningful sentences. Such a transition requires more than just expanding vocabulary size, but comprehending the relations between single words and which words can be meaningfully combined in what order [@macWhinney2011]. Language development, as described by lexical diversity trajectory, is not a linear process. Rather, it can only be properly viewed and understood as a totality that composed of many different strands such as phonological, lexical, semantic and syntactic skills. Partial examination of any given section, such as vocabulary size assessment, yields merely an accumulation of its compotent. Future work is needed to better determine if the specific information captured by these measures varies with different registers. As such, moving the holistic understanding of child's language acquisition forward requires researchers to fully appreciate the mechanism undepining each language measure and be aware of limitations and advantages of each approach. 
 
+## to be added
+This finding aligns with previous work in which mothers fine-tune language usage, specifically vocabulary choice, across development in connect to their children's level of understanding and language skills [@dan2016]. 
 
-The unique information apprehended by the two measures together delineate the construct of lexical diversity, though far from comprehensive. This study explores the specific aspect of child's language development between 14 and 58 months. The time range examined here grasps the linguistic transitions from producing first word to succesive single-word utterances then to meaningful sentences. Such a transition requires more than just expanding vocabulary size, but comprehending the relations between single words and which words can be meaningfully combined in what order [@macWhinney2011]. Language development, as described by lexical diversity trajectory, is not a linear process. Rather, it can be likened to a tapestry composed of many different colors stands (i.e. phonological, lexical, semantic and syntactic skills etc.) and it can only be properly viewed and understood as a totality. Partial examination of any given section, such as vocabulary size assessment, of the tapestry yields merely an accumulation of its compotent (Irwine & Mitchell, 1986). Future work is needed to better determine if the specific information captured by these measures varies with different registers. As such, moving the holistic understanding of child's language acquisition forward requires researchers to fully appreciate the mechanism undepining each language measure and be aware of limitations and advantages of each approach. 
 
 # Acknowledgements
 
