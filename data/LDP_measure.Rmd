@@ -45,7 +45,8 @@ ldp <- connect_to_ldp()
 
 demos <- get_table(ldp, "subjects") %>%
         filter(lesion == "") %>%
-        select(id, sex, race, ethn) %>%
+        select(id, sex, race, ethn, lesion) %>%
+        mutate(lesion = if_else(lesion == "", as.character(NA), lesion))%>%
         collect()
 
 visits <- get_table(ldp, "home_visits") %>%
@@ -66,6 +67,11 @@ subjs <- visits %>%
   filter(completed >= 5) %>%
   select(-completed) %>%
   right_join(demos, by = c("subject" = "id"))
+
+anonymous_demos <- left_join(demos, visits, by = c("id" = "subject")) %>%
+  mutate(id = salt(id, .seed = 400)) %>%
+  mutate(id = as.numeric(as.factor(id))) %>%
+  arrange(id)
 
 session_ages <- visits %>%
         filter(subject %in% subjs$subject, completed) %>%
@@ -118,7 +124,6 @@ utter_split <- utter_collapsed %>%
 
 * Get MLU data
 ```{r}
-
 tokens <- utter_cleaned %>%
   unnest_tokens(word, chat) 
 
@@ -275,79 +280,4 @@ ldp_all <- ld %>%
    arrange(subject, visit)
 
 write_feather(ldp_all, here("data/ldp_all_anonymized.feather"))
-
-```
-
-* Get PPVT&CDI data
-```{r, echo=F, eval=F,message=F, warning=F}
-# load LDP data
-ldp_cdi <- read_csv("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/cdi.csv")
-ldp_ppvt <- read_csv("/Users/Yawen/Desktop/lexical diversity/trial5_ldp/ppvt.csv")
-
-# filter children with at least 2 observations
-filter_func <- function(df) {
-        num <- aggregate(df$vocab,
-                         by = list(subject = df$subject),length)
-        nchild <- num$subject[(num$x > 1)]
-        df <- df %>%
-                filter(subject %in% nchild) %>%
-                group_by(subject)
-        return(df)
-}
-
-
-ldp_ppvt <- ldp_ppvt %>%
-        rename(subject = `I Home Visit Info::subject_number`)%>%
-        mutate(vocab = as.numeric(`ppvt_percentile`)) %>%
-        filter_func(.)%>%
-        select(-c(ppvt))%>%
-        rename(k_ppvt = vocab)%>%
-        select(subject, session, ppvt)
-
-
-ldp_cdi <- ldp_cdi %>%
-        rename(age = `cdis_subjectage`,
-               subject = `I Home Visit Info::subject_number`,
-               vocab = `Number of words`)%>%
-        filter(!is.na(age))%>%
-        filter_func(.)%>%
-        mutate(sentence = as.numeric(`Sentence complexity`),
-               session = ifelse(age <=16,1,
-                                ifelse(age<=20,2,
-                                       ifelse(age<=24,3,
-                                              ifelse(age<=28,4,
-                                                     ifelse(age<=32,5,
-                                                            ifelse(age<=36,6,
-                                                                   ifelse(age<=40,7))))))))%>%
-        rename(k_cdi =vocab)%>%
-        select(subject, session, k_cdi, sentence)
-```  
-
-
-
-* Merge data
-```{r, eval = F}
-# filter kids' data with at least 5 observeations
-measure_filter <- function(df) {
-        nld <- aggregate(df$k_mtld, by = list(subject = df$subject),length)
-        nchild <- nld$subject[(nld$x > 4)]
-        df <- df %>%
-                filter(subject %in% nchild) %>%
-                group_by(subject)
-        return(df)
-}
-
-# combine CDI and PPVT with other datasets by `session`
-ldp_all <- measure_filter(kid_ld) %>%
-        left_join(mom_ld)%>%
-        left_join(kid_mlu)%>%
-        left_join(mom_mlu)%>%
-        left_join(ldp_cdi)%>%
-        left_join(ldp_ppvt)%>% 
-        left_join(select(measures,subject, session, income))%>%
-        left_join(session_age)%>%
-        left_join(select(subjs,-dob))%>%
-        unique()
-
-write_feather(ldp_all,"/Users/Yawen/Documents/Github/CHILDES_Lexical-Diversity/data/ldp_all.feather" )
 ```
